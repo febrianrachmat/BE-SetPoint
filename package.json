@@ -1,0 +1,17 @@
+{
+  "name": "be-setpoint",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Set Point backend — NestJS services, Prisma schema, and architecture docs",
+  "scripts": {
+    "prisma:format": "prisma format",
+    "prisma:validate": "prisma validate",
+    "prisma:generate": "prisma generate"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0"
+  }
+}
