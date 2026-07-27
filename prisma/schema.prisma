@@ -18,6 +18,7 @@
 // Step 5 Completed — Competition Runtime Models
 // Step 6 Completed — Playoff Models
 // Step 7 Completed — Operations & Infrastructure Models
+// Step 8 Completed — Identity & Access Models (User + UserRoleAssignment)
 //
 // NOTE:
 // This file is generated incrementally following the
@@ -176,6 +177,58 @@ enum ArtifactType {
   @@map("artifact_type")
 }
 
+enum UserRole {
+  super_admin
+  tournament_admin
+  referee
+
+  @@map("user_role")
+}
+
+// -----------------------------------------------------------------------------
+// Identity & Access Models
+// -----------------------------------------------------------------------------
+
+model User {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  email        String @unique(map: "uq_users_email") @db.VarChar(255)
+  passwordHash String @map("password_hash")
+  displayName  String @map("display_name") @db.VarChar(200)
+  isActive     Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedBy String?   @map("deleted_by") @db.Uuid
+
+  roleAssignments UserRoleAssignment[] @relation("UserRoleAssignments")
+
+  @@map("users")
+}
+
+model UserRoleAssignment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  userId       String  @map("user_id") @db.Uuid
+  tournamentId String? @map("tournament_id") @db.Uuid
+
+  role UserRole
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by") @db.Uuid
+
+  user       User        @relation("UserRoleAssignments", fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tournament Tournament? @relation("TournamentRoleAssignments", fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId], map: "idx_user_role_assignments_user")
+  @@index([tournamentId], map: "idx_user_role_assignments_tournament")
+  @@map("user_role_assignments")
+}
+
 // -----------------------------------------------------------------------------
 // Foundation Models
 // -----------------------------------------------------------------------------
@@ -204,12 +257,13 @@ model Tournament {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
   deletedBy String?   @map("deleted_by") @db.Uuid
 
-  categories Category[] @relation("TournamentCategories")
-  courts     Court[]    @relation("TournamentCourts")
-  sponsors   Sponsor[]  @relation("TournamentSponsors")
-  gallery    Gallery?   @relation("TournamentGallery")
-  auditLogs  AuditLog[] @relation("TournamentAuditLogs")
-  eventLogs  EventLog[] @relation("TournamentEventLogs")
+  categories       Category[]            @relation("TournamentCategories")
+  courts           Court[]               @relation("TournamentCourts")
+  sponsors         Sponsor[]             @relation("TournamentSponsors")
+  gallery          Gallery?              @relation("TournamentGallery")
+  auditLogs        AuditLog[]            @relation("TournamentAuditLogs")
+  eventLogs        EventLog[]            @relation("TournamentEventLogs")
+  roleAssignments  UserRoleAssignment[]  @relation("TournamentRoleAssignments")
 
   @@index([status], map: "idx_tournaments_status")
   @@map("tournaments")

@@ -20,41 +20,151 @@ Companion repository:
 
 ```text
 BE-SetPoint/
-├── .github/                 # GitHub workflows and automation config
-├── docs/                    # Architecture & product documentation (00–09)
+├── docs/
 ├── prisma/
-│   └── schema.prisma        # Authoritative Prisma schema
-├── src/                     # NestJS application source (pending scaffold)
-├── .editorconfig
-├── .env.example
-├── .gitignore
-├── LICENSE
-├── package.json
-└── README.md
+│   ├── schema.prisma
+│   ├── seed.ts
+│   └── migrations/
+├── src/
+│   ├── common/              # API foundation (filters, interceptors, middleware)
+│   ├── prisma/
+│   ├── app.controller.ts    # GET /api/v1/health
+│   ├── app.module.ts
+│   ├── app.service.ts
+│   └── main.ts
+├── nest-cli.json
+└── package.json
 ```
 
-## Prisma
-
-Schema lives at `prisma/schema.prisma`.
+## Quick start
 
 ```bash
 npm install
-npm run prisma:validate
+cp .env.example .env   # set DATABASE_URL
+npm run prisma:generate
+npm run prisma:seed
+npm run start:dev
 ```
 
-Copy `.env.example` to `.env` and set `DATABASE_URL` before generating the client or running migrations.
+- Health: `GET http://localhost:3000/api/v1/health`
+- Swagger: `http://localhost:3000/docs`
+
+## API foundation
+
+All business endpoints should follow:
+
+- Prefix: `/api/v1`
+- Success envelope: `{ success: true, data, meta }`
+- Error envelope: `{ success: false, error, meta }`
+- ValidationPipe (whitelist + transform)
+- Request id via `x-request-id`
+- HTTP request logging
+
+## Prisma
+
+```bash
+npm run prisma:validate
+npm run prisma:migrate:deploy
+npm run prisma:seed
+```
 
 ## Development Status
 
-**Phase: Foundation Phase**
+**Phase:** Implementation kickoff
 
-Current focus:
+Done:
 
-- Architecture documentation complete through Prisma Schema Specification
-- Prisma schema implemented for all 26 physical tables
-- NestJS application scaffold pending
+- Architecture docs 00–09
+- Prisma schema (26 tables)
+- NestJS foundation + Prisma wiring
+- Baseline migration + demo seed
+- API foundation (Swagger, envelope, filters, logging, `/api/v1`)
+- Auth foundation (User + role assignments, JWT, RBAC-ready guards)
+- Tournament module (CRUD + official lifecycle transitions)
+- Thin DomainEventPublisher (log-only MVP; ready for AuditLog later)
+- Category → Team → Player module (registration, eligibility, soft delete, withdraw)
 
-See [`docs/00-project-charter.md`](./docs/00-project-charter.md) for governing product context.
+Next:
+
+1. Drawing / Schedule / Match layers
+2. Live Scoring → Standing → Playoff
+
+## Tournament API
+
+All routes require Bearer auth + `tournament:manage` permission.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/v1/tournaments` | search, status filter, pagination |
+| GET | `/api/v1/tournaments/:id` | detail |
+| POST | `/api/v1/tournaments` | create as Draft |
+| PATCH | `/api/v1/tournaments/:id` | update fields (not free status change) |
+| DELETE | `/api/v1/tournaments/:id` | soft delete (Draft/Setup only) |
+| POST | `/api/v1/tournaments/:id/setup` | Draft → Setup |
+| POST | `/api/v1/tournaments/:id/publish` | Setup → Published (requires ≥1 Category) |
+| POST | `/api/v1/tournaments/:id/go-live` | Published → Live |
+| POST | `/api/v1/tournaments/:id/finish` | Live → Finished |
+| POST | `/api/v1/tournaments/:id/archive` | Finished → Archived |
+
+## Category / Team / Player API
+
+Nested under tournament. Same auth as Tournament (`tournament:manage`). Param `tournamentId` enables scoped RBAC.
+
+### Categories — `/api/v1/tournaments/:tournamentId/categories`
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | list + search + pagination |
+| GET | `/:categoryId` | detail |
+| POST | `/` | create (Draft/Setup/Published) |
+| PATCH | `/:categoryId` | update when unlocked; blocks if published/locked artifacts |
+| DELETE | `/:categoryId` | soft delete (CAT-05: no verified matches / published artifacts) |
+
+### Teams — `.../categories/:categoryId/teams`
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | list (+ players) |
+| GET | `/:teamId` | detail |
+| POST | `/` | register team; optional `players[]`; recomputes eligibility |
+| PATCH | `/:teamId` | rename before Drawing published/locked |
+| DELETE | `/:teamId` | soft delete before Drawing published/locked (TEAM-06) |
+| POST | `/:teamId/withdraw` | withdraw with reason (TEAM-07) |
+
+### Players — `.../teams/:teamId/players`
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | list |
+| GET | `/:playerId` | detail |
+| POST | `/` | add player; duplicate name in category rejected (TEAM-05) |
+| PATCH | `/:playerId` | rename |
+| DELETE | `/:playerId` | soft delete; eligibility recomputed |
+
+Eligibility: `configuration.teamSize` vs active players → `eligible` / `ineligible`.
+
+## Auth
+
+```bash
+# ensure JWT_SECRET is set in .env
+npm run prisma:seed
+npm run start:dev
+```
+
+Demo users (password `Password123!`):
+
+| Email | Global role |
+| --- | --- |
+| `superadmin@setpoint.local` | `super_admin` |
+| `admin@setpoint.local` | `tournament_admin` |
+| `referee@setpoint.local` | `referee` |
+
+Endpoints:
+
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me` (Bearer token)
+
+Role assignments support optional `tournamentId` for future per-tournament roles. MVP seeds global roles (`tournamentId = null`).
 
 ## License
 
