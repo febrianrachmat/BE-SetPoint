@@ -83,11 +83,14 @@ Done:
 - Tournament module (CRUD + official lifecycle transitions)
 - Thin DomainEventPublisher (log-only MVP; ready for AuditLog later)
 - Category → Team → Player module (registration, eligibility, soft delete, withdraw)
+- **Step 6A** — Drawing Generation (candidate versions, Groups, GroupMembers; no Match/Publish/Lock)
+- **Step 6B** — Drawing Versioning (Review → Publish → Official; history preserved)
+- **Step 6C** — Drawing Lock (freeze registration / withdraw / category structure)
 
 Next:
 
-1. Drawing / Schedule / Match layers
-2. Live Scoring → Standing → Playoff
+1. Step 7 — Schedule Generation (Match + ScheduleEntry)
+2. Step 8+ — Live Match → Standing → Playoff
 
 ## Tournament API
 
@@ -142,6 +145,45 @@ Nested under tournament. Same auth as Tournament (`tournament:manage`). Param `t
 | DELETE | `/:playerId` | soft delete; eligibility recomputed |
 
 Eligibility: `configuration.teamSize` vs active players → `eligible` / `ineligible`.
+
+## Drawing API (Step 6A + 6B)
+
+Design: `docs/10-drawing-engine-step-6a.md`
+
+Base: `/api/v1/tournaments/:tournamentId/categories/:categoryId/drawing`
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | Drawing header (+ official version summary) |
+| GET | `/official` | Current official version detail |
+| POST | `/generate` | New **candidate** version + Groups + GroupMembers |
+| GET | `/versions` | Version history |
+| GET | `/versions/:versionId` | Version detail |
+| POST | `/versions/:versionId/review` | Approve/reject candidate (REV) |
+| POST | `/versions/:versionId/publish` | Make official (requires approved review) |
+| POST | `/lock` | Lock published Drawing (freezes registration/withdraw/category) |
+| POST | `/unlock` | Exceptional unlock — body `{ "reason": "..." }` |
+
+`POST /generate` body: `{ "placementMode": "random" \| "seeded", "drawingSeed?": "..." }`
+
+`POST .../review` body: `{ "outcome": "approved" \| "rejected", "note?": "..." }`
+
+Flow: **Generate → Review(approve) → Publish(official) → Lock**. Prior official becomes `historical`. Unlock requires reason (LOCK-07).
+
+Lock effects (6C):
+- No generate / review / publish
+- No team register / soft-delete (also blocked after Publish)
+- No team withdraw
+- Category structure delete/update blocked; Category + official Groups lockState set
+
+**Schedule Ready** (conceptual, not a DB field): Schedule Generation (Step 7) requires Drawing **Published AND Locked**. Helper: `DrawingService.assertScheduleReady()`.
+
+Step 7 API: `POST .../schedule/generate` — **no** `drawingVersionId` in the body; engine always uses the Official version.
+
+- Eligible teams only; exact partition via `configuration.groupCount` × `teamsPerGroup`
+- Stores `drawingSeed`, `prngAlgorithm` (`mulberry32-v1` for random), `engineVersion`, `generationDurationMs`
+- Does **not** create Matches; Publish does **not** Lock
+- Unit checks: `npm run test:drawing`
 
 ## Auth
 

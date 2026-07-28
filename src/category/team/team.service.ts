@@ -233,6 +233,13 @@ export class TeamService {
       throw new BadRequestException('Team is already withdrawn');
     }
 
+    const locked = await this.teams.isDrawingLocked(categoryId);
+    if (locked) {
+      throw new BadRequestException(
+        'Team withdrawal is forbidden while Drawing is locked; Unlock required (LOCK-04/07)',
+      );
+    }
+
     const withdrawn = await this.teams.withdraw(teamId, dto.reason, user.id);
     await this.events.publish({
       name: TeamEvents.Withdrawn,
@@ -350,6 +357,12 @@ export class TeamService {
       'code' in error &&
       (error as { code?: string }).code === 'P2002'
     ) {
+      const target = (error as { meta?: { target?: string[] } }).meta?.target;
+      if (target?.some((field) => field.includes('seed_rank'))) {
+        throw new ConflictException(
+          'seedRank already used by another team in this category',
+        );
+      }
       throw new ConflictException(
         'Team name already exists in this category',
       );

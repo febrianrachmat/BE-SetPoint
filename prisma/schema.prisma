@@ -418,6 +418,7 @@ model Team {
   categoryId String @map("category_id") @db.Uuid
 
   name             String  @db.VarChar(200)
+  seedRank         Int?    @map("seed_rank")
   withdrawalFlag   Boolean @default(false) @map("withdrawal_flag")
   withdrawalReason String? @map("withdrawal_reason")
 
@@ -512,6 +513,10 @@ model DrawingVersion {
 
   versionNumber    Int           @map("version_number")
   drawingSeed      String        @map("drawing_seed") @db.VarChar(128)
+  placementMode    String        @map("placement_mode") @db.VarChar(20)
+  prngAlgorithm    String?       @map("prng_algorithm") @db.VarChar(50)
+  engineVersion    String        @map("engine_version") @db.VarChar(50)
+  generationDurationMs Int?      @map("generation_duration_ms")
   officialFlag     Boolean       @default(false) @map("official_flag")
   generationSource String        @default("engine") @map("generation_source") @db.VarChar(50)
   versionStatus    VersionStatus @default(candidate) @map("version_status")

@@ -18,6 +18,7 @@ export type CreateTeamData = {
 
 export type UpdateTeamData = {
   name?: string;
+  seedRank?: number | null;
   updatedBy?: string;
 };
 
@@ -128,6 +129,7 @@ export class TeamRepository {
       where: { id },
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.seedRank !== undefined ? { seedRank: data.seedRank } : {}),
         updatedBy: data.updatedBy,
         rowVersion: { increment: 1 },
       },
@@ -230,6 +232,16 @@ export class TeamRepository {
           { publishState: PublishState.published },
           { lockState: LockState.locked },
         ],
+      },
+      select: { id: true },
+    });
+  }
+
+  isDrawingLocked(categoryId: string) {
+    return this.prisma.drawing.findFirst({
+      where: {
+        categoryId,
+        lockState: LockState.locked,
       },
       select: { id: true },
     });

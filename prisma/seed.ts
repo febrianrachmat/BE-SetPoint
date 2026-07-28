@@ -60,6 +60,40 @@ async function clearDemoTournament() {
   });
   const categoryIds = categories.map((c) => c.id);
 
+  if (categoryIds.length > 0) {
+    const drawings = await prisma.drawing.findMany({
+      where: { categoryId: { in: categoryIds } },
+      select: { id: true },
+    });
+    const drawingIds = drawings.map((d) => d.id);
+
+    if (drawingIds.length > 0) {
+      const versions = await prisma.drawingVersion.findMany({
+        where: { drawingId: { in: drawingIds } },
+        select: { id: true },
+      });
+      const versionIds = versions.map((v) => v.id);
+
+      if (versionIds.length > 0) {
+        await prisma.groupMember.deleteMany({
+          where: { drawingVersionId: { in: versionIds } },
+        });
+        await prisma.group.deleteMany({
+          where: { drawingVersionId: { in: versionIds } },
+        });
+        await prisma.drawing.updateMany({
+          where: { id: { in: drawingIds } },
+          data: { currentOfficialVersionId: null },
+        });
+        await prisma.drawingVersion.deleteMany({
+          where: { id: { in: versionIds } },
+        });
+      }
+
+      await prisma.drawing.deleteMany({ where: { id: { in: drawingIds } } });
+    }
+  }
+
   const teams = await prisma.team.findMany({
     where: { categoryId: { in: categoryIds } },
     select: { id: true },
@@ -154,9 +188,27 @@ async function seed() {
   });
 
   const categoryDefs = [
-    { name: "Men's Open", format: 'doubles_group_playoff', teamCount: 8 },
-    { name: 'Mixed Doubles', format: 'doubles_group_playoff', teamCount: 4 },
-    { name: "Women's Open", format: 'doubles_group_playoff', teamCount: 4 },
+    {
+      name: "Men's Open",
+      format: 'doubles_group_playoff',
+      teamCount: 8,
+      groupCount: 2,
+      teamsPerGroup: 4,
+    },
+    {
+      name: 'Mixed Doubles',
+      format: 'doubles_group_playoff',
+      teamCount: 4,
+      groupCount: 2,
+      teamsPerGroup: 2,
+    },
+    {
+      name: "Women's Open",
+      format: 'doubles_group_playoff',
+      teamCount: 4,
+      groupCount: 2,
+      teamsPerGroup: 2,
+    },
   ] as const;
 
   const categories = [];
@@ -170,6 +222,8 @@ async function seed() {
         publishState: PublishState.unpublished,
         configuration: {
           teamSize: 2,
+          groupCount: def.groupCount,
+          teamsPerGroup: def.teamsPerGroup,
           scoring: 'best_of_3',
         },
       },
@@ -188,6 +242,7 @@ async function seed() {
         data: {
           categoryId: category.id,
           name: `Team ${String(teamSequence).padStart(2, '0')}`,
+          seedRank: i,
           status: TeamStatus.active,
           eligibilityStatus: EligibilityStatus.eligible,
         },
