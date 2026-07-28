@@ -47,10 +47,27 @@ export class StandingController {
     );
   }
 
+  @Get('qualified')
+  @ApiOperation({
+    summary:
+      'List qualified teams for Playoff intake (Step 9C). Filter optional groupId.',
+  })
+  listQualified(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Query() query: ListStandingsQueryDto,
+  ) {
+    return this.standingService.listQualified(
+      tournamentId,
+      categoryId,
+      query.groupId,
+    );
+  }
+
   @Post('recalculate')
   @ApiOperation({
     summary:
-      'Recalculate standings from Verified group matches (STD-03). Auto-runs on match.verified.',
+      'Recalculate standings + qualification from Verified group matches (STD-03). Auto-runs on match.verified.',
   })
   recalculate(
     @Param('tournamentId', ParseUUIDPipe) tournamentId: string,

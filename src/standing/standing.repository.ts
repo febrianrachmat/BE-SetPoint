@@ -11,7 +11,7 @@ import {
   PADEL_SCORING_ENGINE_VERSION,
   ScoreState,
 } from '../match/scoring';
-import { RankedStanding } from './engine';
+import { QualifiedStanding } from './engine';
 
 @Injectable()
 export class StandingRepository {
@@ -127,7 +127,7 @@ export class StandingRepository {
   async replaceGroupStandings(params: {
     categoryId: string;
     groupId: string;
-    ranked: RankedStanding[];
+    ranked: QualifiedStanding[];
     updatedBy?: string;
   }) {
     const now = new Date();
@@ -152,6 +152,10 @@ export class StandingRepository {
 
       const results = [];
       for (const row of params.ranked) {
+        const qualificationStatus =
+          row.qualificationStatus === 'qualified'
+            ? QualificationStatus.qualified
+            : QualificationStatus.not_qualified;
         const prev = byTeam.get(row.teamId);
         if (prev) {
           results.push(
@@ -164,10 +168,10 @@ export class StandingRepository {
                 losses: row.losses,
                 points: row.points,
                 tieBreakNotes: row.tieBreakNotes,
+                qualificationStatus,
                 lastRecalculatedAt: now,
                 updatedBy: params.updatedBy,
                 rowVersion: { increment: 1 },
-                // Keep publish/lock/qualification as-is in 9A
               },
               include: {
                 team: { select: { id: true, name: true } },
@@ -189,7 +193,7 @@ export class StandingRepository {
                 points: row.points,
                 tieBreakNotes: row.tieBreakNotes,
                 lastRecalculatedAt: now,
-                qualificationStatus: QualificationStatus.not_qualified,
+                qualificationStatus,
                 createdBy: params.updatedBy,
                 updatedBy: params.updatedBy,
               },

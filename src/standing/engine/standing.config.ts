@@ -63,5 +63,8 @@ export function resolveStandingsConfig(configuration: unknown): StandingsConfig 
     pointsForWin,
     pointsForLoss,
     tieBreakOrder: parseTieBreakOrder(raw.tieBreakOrder),
+    qualifyTop: isNonNegInt(raw.qualifyTop)
+      ? raw.qualifyTop
+      : DEFAULT_STANDINGS_CONFIG.qualifyTop,
   };
 }

@@ -15,6 +15,7 @@ import {
 import { MatchEvents } from '../match/match.events';
 import {
   calculateGroupStandings,
+  listQualifiedTeamIds,
   resolveStandingsConfig,
   StandingMatchInput,
 } from './engine';
@@ -57,6 +58,26 @@ export class StandingService implements OnModuleInit {
     return { items };
   }
 
+  async listQualified(
+    tournamentId: string,
+    categoryId: string,
+    groupId?: string,
+  ) {
+    await this.requireCategory(tournamentId, categoryId);
+    const items = await this.standings.findStandings({
+      categoryId,
+      groupId,
+    });
+    const qualified = items
+      .filter((row) => row.qualificationStatus === 'qualified')
+      .sort(
+        (a, b) =>
+          (a.rankPosition ?? 999) - (b.rankPosition ?? 999) ||
+          a.teamId.localeCompare(b.teamId),
+      );
+    return { items: qualified };
+  }
+
   async recalculate(
     tournamentId: string,
     categoryId: string,
@@ -92,6 +113,7 @@ export class StandingService implements OnModuleInit {
     const scheduleVersionId = schedule?.currentOfficialVersionId ?? null;
 
     const allRows = [];
+    const qualifiedTeamIds: string[] = [];
     for (const group of groups) {
       const locked = await this.standings.findLockedStandingInGroup(
         categoryId,
@@ -144,6 +166,7 @@ export class StandingService implements OnModuleInit {
         updatedBy: params.actorId,
       });
       allRows.push(...saved);
+      qualifiedTeamIds.push(...listQualifiedTeamIds(ranked));
     }
 
     await this.events.publish({
@@ -155,6 +178,8 @@ export class StandingService implements OnModuleInit {
         groupId: params.groupId ?? null,
         groupCount: groups.length,
         rowCount: allRows.length,
+        qualifiedCount: qualifiedTeamIds.length,
+        qualifiedTeamIds,
         actorId: params.actorId ?? null,
       },
     });

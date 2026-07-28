@@ -25,12 +25,15 @@ export type StandingsConfig = {
   pointsForWin: number;
   pointsForLoss: number;
   tieBreakOrder: TieBreakCriterion[];
+  /** Top N ranks per group advance (Step 9C). */
+  qualifyTop: number;
 };
 
 export const DEFAULT_STANDINGS_CONFIG: StandingsConfig = {
   pointsForWin: 1,
   pointsForLoss: 0,
   tieBreakOrder: [...DEFAULT_TIE_BREAK_ORDER],
+  qualifyTop: 2,
 };
 
 /** Verified match facts consumed by the standing calculator (no Nest/Prisma). */
@@ -57,4 +60,10 @@ export type TeamStandingStats = {
 export type RankedStanding = TeamStandingStats & {
   rankPosition: number;
   tieBreakNotes: string | null;
+};
+
+export type QualificationStatusValue = 'qualified' | 'not_qualified';
+
+export type QualifiedStanding = RankedStanding & {
+  qualificationStatus: QualificationStatusValue;
 };

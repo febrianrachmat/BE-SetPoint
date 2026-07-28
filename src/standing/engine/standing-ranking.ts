@@ -1,6 +1,8 @@
 import { accumulateStandings } from './standing-calculator';
+import { applyQualification } from './standing-qualification';
 import { orderTeamsByTieBreak } from './standing-tie-break';
 import {
+  QualifiedStanding,
   RankedStanding,
   StandingMatchInput,
   StandingsConfig,
@@ -53,15 +55,20 @@ export function calculateGroupStandings(params: {
   teamIds: string[];
   matches: StandingMatchInput[];
   config: StandingsConfig;
-}): RankedStanding[] {
+}): QualifiedStanding[] {
   const stats = accumulateStandings({
     teamIds: params.teamIds,
     matches: params.matches,
     config: params.config,
   });
-  return rankStandings({
+  const ranked = rankStandings({
     stats,
     matches: params.matches,
     config: params.config,
   });
+  return applyQualification({
+    ranked,
+    qualifyTop: params.config.qualifyTop,
+  });
 }
+

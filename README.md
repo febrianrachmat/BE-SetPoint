@@ -94,11 +94,12 @@ Done:
 - **Step 8C** — Match Verification (gates + `getMatchResult` + `match.verified` for Standing)
 - **Step 9A** — Standing Engine (group W-L-P + rank from Verified; auto on `match.verified`)
 - **Step 9B** — Tie-break policy pipeline (`tieBreakOrder`, H2H mini-table; no silent random)
+- **Step 9C** — Qualification (`qualifyTop` → `qualificationStatus` for Playoff intake)
 
 Next:
 
-1. Step 9C — Qualification (`qualifyTop` → `qualificationStatus`)
-2. Step 10 — Playoff Engine
+1. Step 10A — Playoff Bracket Generator (from Qualified teams)
+2. Step 10B/C — Playoff match lifecycle + Champion
 
 ## Tournament API
 
@@ -253,12 +254,13 @@ Auth: `tournament:manage`
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/` | List (+ optional `groupId`) |
+| GET | `/qualified` | Qualified teams only (Step 9C → Playoff intake) |
 | POST | `/recalculate` | Body `{ "groupId?" }` — Verified matches only |
 
-- Criteria: `Category.configuration.standings` (`pointsForWin` / `pointsForLoss` / `tieBreakOrder`)
+- Criteria: `Category.configuration.standings` (`pointsForWin` / `pointsForLoss` / `tieBreakOrder` / `qualifyTop`)
 - Default tie-break: points → wins → head_to_head → set diff → game diff
 - `random_draw` in order marks `random_draw_pending` (Admin); never auto-shuffles
-- Qualification / Publish / Lock polish deferred (9C+)
+- Qualification: top `qualifyTop` per group; ambiguous cutoff → `qualification_blocked_tie`
 - Unit: `npm run test:standing`
 
 ## Auth

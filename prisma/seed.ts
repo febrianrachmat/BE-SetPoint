@@ -289,6 +289,7 @@ async function seed() {
               'set_difference',
               'game_difference',
             ],
+            qualifyTop: 2,
           },
         },
       },

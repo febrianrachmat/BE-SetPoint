@@ -5,6 +5,10 @@
 import assert from 'node:assert/strict';
 import { accumulateStandings } from './standing-calculator';
 import { resolveStandingsConfig } from './standing.config';
+import {
+  applyQualification,
+  listQualifiedTeamIds,
+} from './standing-qualification';
 import { calculateGroupStandings, rankStandings } from './standing-ranking';
 import {
   DEFAULT_STANDINGS_CONFIG,
@@ -252,6 +256,110 @@ function match(
   assert.equal(ranked[0].rankPosition, 1);
   assert.equal(ranked[1].rankPosition, 1);
   assert.equal(ranked[0].tieBreakNotes, 'unresolved_tie');
+}
+
+// --- 9C qualification: top 2 ---
+{
+  const qualified = applyQualification({
+    qualifyTop: 2,
+    ranked: [
+      {
+        teamId: 'a',
+        matchesPlayed: 2,
+        wins: 2,
+        losses: 0,
+        points: 2,
+        setsWon: 2,
+        setsLost: 0,
+        gamesWon: 12,
+        gamesLost: 4,
+        rankPosition: 1,
+        tieBreakNotes: null,
+      },
+      {
+        teamId: 'b',
+        matchesPlayed: 2,
+        wins: 1,
+        losses: 1,
+        points: 1,
+        setsWon: 1,
+        setsLost: 1,
+        gamesWon: 8,
+        gamesLost: 8,
+        rankPosition: 2,
+        tieBreakNotes: null,
+      },
+      {
+        teamId: 'c',
+        matchesPlayed: 2,
+        wins: 0,
+        losses: 2,
+        points: 0,
+        setsWon: 0,
+        setsLost: 2,
+        gamesWon: 4,
+        gamesLost: 12,
+        rankPosition: 3,
+        tieBreakNotes: null,
+      },
+    ],
+  });
+  assert.equal(qualified[0].qualificationStatus, 'qualified');
+  assert.equal(qualified[1].qualificationStatus, 'qualified');
+  assert.equal(qualified[2].qualificationStatus, 'not_qualified');
+  assert.deepEqual(listQualifiedTeamIds(qualified), ['a', 'b']);
+}
+
+// --- 9C: tie at cutoff blocks ambiguous slots ---
+{
+  const qualified = applyQualification({
+    qualifyTop: 2,
+    ranked: [
+      {
+        teamId: 'a',
+        matchesPlayed: 1,
+        wins: 1,
+        losses: 0,
+        points: 1,
+        setsWon: 1,
+        setsLost: 0,
+        gamesWon: 6,
+        gamesLost: 2,
+        rankPosition: 1,
+        tieBreakNotes: null,
+      },
+      {
+        teamId: 'b',
+        matchesPlayed: 1,
+        wins: 0,
+        losses: 1,
+        points: 0,
+        setsWon: 0,
+        setsLost: 1,
+        gamesWon: 4,
+        gamesLost: 6,
+        rankPosition: 2,
+        tieBreakNotes: 'unresolved_tie',
+      },
+      {
+        teamId: 'c',
+        matchesPlayed: 1,
+        wins: 0,
+        losses: 1,
+        points: 0,
+        setsWon: 0,
+        setsLost: 1,
+        gamesWon: 4,
+        gamesLost: 6,
+        rankPosition: 2,
+        tieBreakNotes: 'unresolved_tie',
+      },
+    ],
+  });
+  assert.equal(qualified[0].qualificationStatus, 'qualified');
+  assert.equal(qualified[1].qualificationStatus, 'not_qualified');
+  assert.equal(qualified[2].qualificationStatus, 'not_qualified');
+  assert.ok(qualified[1].tieBreakNotes?.includes('qualification_blocked_tie'));
 }
 
 console.log('standing-calculator.spec: all assertions passed');
