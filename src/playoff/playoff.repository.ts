@@ -72,12 +72,19 @@ export class PlayoffRepository {
         versionNumber: true,
         versionStatus: true,
         officialFlag: true,
+        reviewOutcome: true,
         publishState: true,
         lockState: true,
         generationSource: true,
         createdAt: true,
         createdBy: true,
       },
+    });
+  }
+
+  findBracketForPlayoff(playoffId: string, bracketId: string) {
+    return this.prisma.bracket.findFirst({
+      where: { id: bracketId, playoffId },
     });
   }
 
@@ -97,6 +104,10 @@ export class PlayoffRepository {
         },
       },
     });
+  }
+
+  isLocked(lockState: LockState) {
+    return lockState === LockState.locked;
   }
 
   nextBracketVersionNumber(playoffId: string) {
@@ -197,8 +208,182 @@ export class PlayoffRepository {
         },
       });
 
-      // Link bracketId on matches (create nested doesn't set bracket relation field name correctly via matches.create under bracket — Prisma sets bracketId automatically when nested under bracket.matches.create)
+      // Prisma sets bracketId automatically when nested under bracket.matches.create
       return bracket;
+    });
+  }
+
+  reviewBracket(params: {
+    playoffId: string;
+    bracketId: string;
+    outcome: 'approved' | 'rejected';
+    updatedBy?: string;
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.bracket.update({
+        where: { id: params.bracketId },
+        data: {
+          reviewOutcome: params.outcome,
+          updatedBy: params.updatedBy,
+        },
+      });
+
+      await tx.playoff.update({
+        where: { id: params.playoffId },
+        data: {
+          reviewStatus: params.outcome,
+          updatedBy: params.updatedBy,
+          rowVersion: { increment: 1 },
+        },
+      });
+
+      return tx.bracket.findUnique({
+        where: { id: params.bracketId },
+        include: {
+          playoff: { select: { id: true, categoryId: true } },
+          matches: {
+            orderBy: { bracketPosition: 'asc' },
+            include: {
+              participations: {
+                orderBy: { sideLabel: 'asc' },
+                include: { team: { select: { id: true, name: true } } },
+              },
+            },
+          },
+        },
+      });
+    });
+  }
+
+  publishBracket(params: {
+    playoffId: string;
+    bracketId: string;
+    previousOfficialBracketId: string | null;
+    publishedBy?: string;
+  }) {
+    const now = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      if (params.previousOfficialBracketId) {
+        await tx.bracket.update({
+          where: { id: params.previousOfficialBracketId },
+          data: {
+            officialFlag: false,
+            versionStatus: VersionStatus.historical,
+            updatedBy: params.publishedBy,
+          },
+        });
+      }
+
+      // Clear FK before reassignment (unique currentOfficialBracketId)
+      await tx.playoff.update({
+        where: { id: params.playoffId },
+        data: {
+          currentOfficialBracketId: null,
+          updatedBy: params.publishedBy,
+          rowVersion: { increment: 1 },
+        },
+      });
+
+      await tx.bracket.update({
+        where: { id: params.bracketId },
+        data: {
+          officialFlag: true,
+          versionStatus: VersionStatus.official,
+          reviewOutcome: ReviewStatus.approved,
+          publishState: PublishState.published,
+          publishedAt: now,
+          publishedBy: params.publishedBy,
+          updatedBy: params.publishedBy,
+        },
+      });
+
+      await tx.playoff.update({
+        where: { id: params.playoffId },
+        data: {
+          currentOfficialBracketId: params.bracketId,
+          publishState: PublishState.published,
+          publishedAt: now,
+          publishedBy: params.publishedBy,
+          reviewStatus: ReviewStatus.approved,
+          updatedBy: params.publishedBy,
+          rowVersion: { increment: 1 },
+        },
+      });
+
+      return tx.bracket.findUnique({
+        where: { id: params.bracketId },
+        include: {
+          playoff: { select: { id: true, categoryId: true } },
+          matches: {
+            orderBy: { bracketPosition: 'asc' },
+            include: {
+              participations: {
+                orderBy: { sideLabel: 'asc' },
+                include: { team: { select: { id: true, name: true } } },
+              },
+            },
+          },
+        },
+      });
+    });
+  }
+
+  lockPlayoff(params: { playoffId: string; lockedBy?: string }) {
+    const now = new Date();
+    return this.prisma.playoff.update({
+      where: { id: params.playoffId },
+      data: {
+        lockState: LockState.locked,
+        lockedAt: now,
+        lockedBy: params.lockedBy,
+        unlockReason: null,
+        unlockedAt: null,
+        unlockedBy: null,
+        updatedBy: params.lockedBy,
+        rowVersion: { increment: 1 },
+      },
+      include: {
+        currentOfficialBracket: {
+          select: {
+            id: true,
+            versionNumber: true,
+            versionStatus: true,
+            officialFlag: true,
+            reviewOutcome: true,
+          },
+        },
+      },
+    });
+  }
+
+  unlockPlayoff(params: {
+    playoffId: string;
+    reason: string;
+    unlockedBy?: string;
+  }) {
+    const now = new Date();
+    return this.prisma.playoff.update({
+      where: { id: params.playoffId },
+      data: {
+        lockState: LockState.unlocked,
+        unlockReason: params.reason,
+        unlockedAt: now,
+        unlockedBy: params.unlockedBy,
+        updatedBy: params.unlockedBy,
+        rowVersion: { increment: 1 },
+      },
+      include: {
+        currentOfficialBracket: {
+          select: {
+            id: true,
+            versionNumber: true,
+            versionStatus: true,
+            officialFlag: true,
+            reviewOutcome: true,
+          },
+        },
+      },
     });
   }
 }

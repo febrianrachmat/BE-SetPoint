@@ -4,18 +4,22 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { LockState, PublishState } from '@prisma/client';
+import { LockState, PublishState, VersionStatus } from '@prisma/client';
 import { AuthUserView } from '../auth/types/auth-user.type';
 import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../common/events/domain-event.publisher';
 import { resolveStandingsConfig } from '../standing/engine';
+import { ReviewBracketDto } from './dto/review-bracket.dto';
+import { UnlockPlayoffDto } from './dto/unlock-playoff.dto';
 import { generatePlayoffBracket, QualifiedSeed } from './engine';
 import { PlayoffEvents } from './playoff.events';
 import {
   isPlayoffLocked,
+  isPlayoffReady,
   PLAYOFF_GENERATION_TOURNAMENT_STATUSES,
+  PLAYOFF_PUBLISH_TOURNAMENT_STATUSES,
 } from './playoff.lifecycle';
 import { PlayoffRepository } from './playoff.repository';
 
@@ -34,6 +38,18 @@ export class PlayoffService {
       throw new NotFoundException('Playoff not found');
     }
     return playoff;
+  }
+
+  async getOfficialBracket(tournamentId: string, categoryId: string) {
+    const playoff = await this.getPlayoff(tournamentId, categoryId);
+    if (!playoff.currentOfficialBracketId) {
+      throw new NotFoundException('No official Bracket');
+    }
+    return this.getBracket(
+      tournamentId,
+      categoryId,
+      playoff.currentOfficialBracketId,
+    );
   }
 
   async listBrackets(tournamentId: string, categoryId: string) {
@@ -198,6 +214,232 @@ export class PlayoffService {
     });
 
     return bracket;
+  }
+
+  async reviewBracket(
+    tournamentId: string,
+    categoryId: string,
+    bracketId: string,
+    dto: ReviewBracketDto,
+    user: AuthUserView,
+  ) {
+    await this.requireCategory(tournamentId, categoryId);
+    const playoff = await this.requirePlayoff(categoryId);
+
+    if (this.playoffs.isLocked(playoff.lockState)) {
+      throw new BadRequestException('Playoff is locked; review is forbidden');
+    }
+
+    const bracket = await this.playoffs.findBracketForPlayoff(
+      playoff.id,
+      bracketId,
+    );
+    if (!bracket) {
+      throw new NotFoundException('Bracket not found');
+    }
+
+    if (bracket.versionStatus === VersionStatus.historical) {
+      throw new BadRequestException('Historical Brackets cannot be reviewed');
+    }
+
+    if (
+      bracket.officialFlag ||
+      bracket.versionStatus === VersionStatus.official
+    ) {
+      throw new BadRequestException(
+        'Official Bracket is already published; generate a new candidate to change the plan',
+      );
+    }
+
+    const reviewed = await this.playoffs.reviewBracket({
+      playoffId: playoff.id,
+      bracketId,
+      outcome: dto.outcome,
+      updatedBy: user.id,
+    });
+
+    await this.events.publish({
+      name: PlayoffEvents.BracketReviewed,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        tournamentId,
+        categoryId,
+        playoffId: playoff.id,
+        bracketId,
+        versionNumber: bracket.versionNumber,
+        outcome: dto.outcome,
+        note: dto.note ?? null,
+        actorId: user.id,
+      },
+    });
+
+    return reviewed;
+  }
+
+  async publishBracket(
+    tournamentId: string,
+    categoryId: string,
+    bracketId: string,
+    user: AuthUserView,
+  ) {
+    const { tournament } = await this.requireCategory(tournamentId, categoryId);
+    const playoff = await this.requirePlayoff(categoryId);
+
+    if (!PLAYOFF_PUBLISH_TOURNAMENT_STATUSES.includes(tournament.status)) {
+      throw new BadRequestException(
+        `Playoff publish is not allowed while tournament is '${tournament.status}'`,
+      );
+    }
+
+    if (this.playoffs.isLocked(playoff.lockState)) {
+      throw new BadRequestException('Playoff is locked; publish is forbidden');
+    }
+
+    const bracket = await this.playoffs.findBracketForPlayoff(
+      playoff.id,
+      bracketId,
+    );
+    if (!bracket) {
+      throw new NotFoundException('Bracket not found');
+    }
+
+    if (bracket.versionStatus === VersionStatus.historical) {
+      throw new BadRequestException('Historical Brackets cannot be published');
+    }
+
+    if (
+      bracket.officialFlag &&
+      bracket.versionStatus === VersionStatus.official
+    ) {
+      throw new BadRequestException('Bracket is already official');
+    }
+
+    if (bracket.reviewOutcome !== 'approved') {
+      throw new BadRequestException(
+        'Bracket must be Review-approved before Publish',
+      );
+    }
+
+    const previousOfficialBracketId = playoff.currentOfficialBracketId;
+    const published = await this.playoffs.publishBracket({
+      playoffId: playoff.id,
+      bracketId,
+      previousOfficialBracketId,
+      publishedBy: user.id,
+    });
+
+    await this.events.publish({
+      name: PlayoffEvents.Published,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        tournamentId,
+        categoryId,
+        playoffId: playoff.id,
+        bracketId,
+        versionNumber: bracket.versionNumber,
+        previousOfficialBracketId,
+        actorId: user.id,
+      },
+    });
+
+    return published;
+  }
+
+  async lock(tournamentId: string, categoryId: string, user: AuthUserView) {
+    await this.requireCategory(tournamentId, categoryId);
+    const playoff = await this.requirePlayoff(categoryId);
+
+    if (playoff.publishState !== PublishState.published) {
+      throw new BadRequestException(
+        'Playoff must be Published before Lock',
+      );
+    }
+    if (!playoff.currentOfficialBracketId) {
+      throw new BadRequestException(
+        'Playoff Lock requires a current Official Bracket',
+      );
+    }
+    if (this.playoffs.isLocked(playoff.lockState)) {
+      throw new BadRequestException('Playoff is already Locked');
+    }
+
+    const locked = await this.playoffs.lockPlayoff({
+      playoffId: playoff.id,
+      lockedBy: user.id,
+    });
+
+    await this.events.publish({
+      name: PlayoffEvents.Locked,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        tournamentId,
+        categoryId,
+        playoffId: playoff.id,
+        officialBracketId: playoff.currentOfficialBracketId,
+        actorId: user.id,
+      },
+    });
+
+    return locked;
+  }
+
+  async unlock(
+    tournamentId: string,
+    categoryId: string,
+    dto: UnlockPlayoffDto,
+    user: AuthUserView,
+  ) {
+    await this.requireCategory(tournamentId, categoryId);
+    const playoff = await this.requirePlayoff(categoryId);
+
+    if (!this.playoffs.isLocked(playoff.lockState)) {
+      throw new BadRequestException('Playoff is not Locked');
+    }
+
+    const unlocked = await this.playoffs.unlockPlayoff({
+      playoffId: playoff.id,
+      reason: dto.reason,
+      unlockedBy: user.id,
+    });
+
+    await this.events.publish({
+      name: PlayoffEvents.Unlocked,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        tournamentId,
+        categoryId,
+        playoffId: playoff.id,
+        reason: dto.reason,
+        actorId: user.id,
+      },
+    });
+
+    return unlocked;
+  }
+
+  /**
+   * Gate for Step 10C playoff match ops: Published ∧ Locked ∧ Official bracket.
+   */
+  async assertPlayoffReady(tournamentId: string, categoryId: string) {
+    await this.requireCategory(tournamentId, categoryId);
+    const playoff = await this.playoffs.findPlayoffByCategory(categoryId);
+    if (!playoff) {
+      throw new BadRequestException('Playoff not found');
+    }
+    if (!isPlayoffReady(playoff)) {
+      throw new BadRequestException(
+        'Playoff Ready requires Published ∧ Locked Official Bracket',
+      );
+    }
+    return playoff;
+  }
+
+  private async requirePlayoff(categoryId: string) {
+    const playoff = await this.playoffs.findPlayoffByCategory(categoryId);
+    if (!playoff) {
+      throw new NotFoundException('Playoff not found');
+    }
+    return playoff;
   }
 
   private async requireCategory(tournamentId: string, categoryId: string) {

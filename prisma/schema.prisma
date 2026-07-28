@@ -841,6 +841,7 @@ model Bracket {
   generationSource String  @default("engine") @map("generation_source") @db.VarChar(50)
 
   versionStatus VersionStatus @default(candidate) @map("version_status")
+  reviewOutcome ReviewStatus? @map("review_outcome")
   publishState  PublishState  @default(unpublished) @map("publish_state")
   publishedAt   DateTime?     @map("published_at") @db.Timestamptz(6)
   publishedBy   String?       @map("published_by") @db.Uuid

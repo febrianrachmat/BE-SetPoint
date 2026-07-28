@@ -96,11 +96,11 @@ Done:
 - **Step 9B** — Tie-break policy pipeline (`tieBreakOrder`, H2H mini-table; no silent random)
 - **Step 9C** — Qualification (`qualifyTop` → `qualificationStatus` for Playoff intake)
 - **Step 10A** — Playoff Bracket Generator (candidate Bracket from qualified seeds)
+- **Step 10B** — Playoff Review → Publish → Official → Lock (Playoff Ready)
 
 Next:
 
-1. Step 10B — Playoff Review → Publish → Official → Lock
-2. Step 10C — Playoff match progression + Champion
+1. Step 10C — Playoff match progression + Champion resolution
 
 ## Tournament API
 
@@ -273,14 +273,19 @@ Auth: `tournament:manage`
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/` | Playoff header |
+| GET | `/official` | Current official Bracket |
 | POST | `/generate` | Candidate Bracket from qualified standings |
 | GET | `/brackets` | Version history |
 | GET | `/brackets/:bracketId` | Detail + matches |
+| POST | `/brackets/:bracketId/review` | `{ outcome: approved\|rejected, note? }` |
+| POST | `/brackets/:bracketId/publish` | Make Official (requires approved) |
+| POST | `/lock` | Lock Published Playoff |
+| POST | `/unlock` | `{ reason }` mandatory |
 
 - Intake: Standing `qualified` only (does not recompute ranks)
 - MVP pairing `cross_group_standard`: A1vsB2 / B1vsA2 (+ Final slot TBD); 1-group → Final A1vsA2
 - Blocks: tournament not live, playoff locked, `qualification_blocked_tie`, unsupported shape
-- Review/Publish/Lock deferred to 10B
+- **Playoff Ready** (10C): Published ∧ Locked — `PlayoffService.assertPlayoffReady()`
 - Unit: `npm run test:playoff`
 
 ## Auth
