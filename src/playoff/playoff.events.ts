@@ -5,6 +5,8 @@ export const PlayoffEvents = {
   Published: 'playoff.published',
   Locked: 'playoff.locked',
   Unlocked: 'playoff.unlocked',
+  Advanced: 'playoff.bracket.advanced',
+  ChampionDeclared: 'playoff.champion.declared',
 } as const;
 
 export type PlayoffEventName =

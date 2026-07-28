@@ -48,6 +48,15 @@ export class PlayoffController {
     return this.playoffService.getOfficialBracket(tournamentId, categoryId);
   }
 
+  @Get('champion')
+  @ApiOperation({ summary: 'Get declared Champion (Step 10C)' })
+  getChampion(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+  ) {
+    return this.playoffService.getChampion(tournamentId, categoryId);
+  }
+
   @Post('generate')
   @ApiOperation({
     summary:

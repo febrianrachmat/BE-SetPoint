@@ -97,10 +97,15 @@ Done:
 - **Step 9C** — Qualification (`qualifyTop` → `qualificationStatus` for Playoff intake)
 - **Step 10A** — Playoff Bracket Generator (candidate Bracket from qualified seeds)
 - **Step 10B** — Playoff Review → Publish → Official → Lock (Playoff Ready)
+- **Step 10C** — Playoff progression + Champion (auto on verify)
 
-Next:
+Domain engines through Playoff are complete for MVP group → knockout.
 
-1. Step 10C — Playoff match progression + Champion resolution
+Next (optional polish):
+
+1. Standing Publish/Lock UX
+2. Court assignment for playoff matches
+3. Contested tie Admin resolution UI
 
 ## Tournament API
 
@@ -281,11 +286,13 @@ Auth: `tournament:manage`
 | POST | `/brackets/:bracketId/publish` | Make Official (requires approved) |
 | POST | `/lock` | Lock Published Playoff |
 | POST | `/unlock` | `{ reason }` mandatory |
+| GET | `/champion` | Declared Champion (after Final verified) |
 
 - Intake: Standing `qualified` only (does not recompute ranks)
 - MVP pairing `cross_group_standard`: A1vsB2 / B1vsA2 (+ Final slot TBD); 1-group → Final A1vsA2
 - Blocks: tournament not live, playoff locked, `qualification_blocked_tie`, unsupported shape
-- **Playoff Ready** (10C): Published ∧ Locked — `PlayoffService.assertPlayoffReady()`
+- **Playoff Ready**: Published ∧ Locked — `PlayoffService.assertPlayoffReady()`
+- On playoff match verify: advance dependent bracket slots; declare Champion when Final completes
 - Unit: `npm run test:playoff`
 
 ## Auth

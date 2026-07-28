@@ -2,18 +2,34 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
-import { LockState, PublishState, VersionStatus } from '@prisma/client';
+import { LockState, MatchStatus, PublishState, VersionStatus } from '@prisma/client';
 import { AuthUserView } from '../auth/types/auth-user.type';
 import {
   DOMAIN_EVENT_PUBLISHER,
+  DomainEvent,
   DomainEventPublisher,
 } from '../common/events/domain-event.publisher';
+import { MatchEvents } from '../match/match.events';
+import {
+  getMatchResult,
+  isMatchComplete,
+  PADEL_SCORING_ENGINE_VERSION,
+  ScoreState,
+} from '../match/scoring';
 import { resolveStandingsConfig } from '../standing/engine';
 import { ReviewBracketDto } from './dto/review-bracket.dto';
 import { UnlockPlayoffDto } from './dto/unlock-playoff.dto';
-import { generatePlayoffBracket, QualifiedSeed } from './engine';
+import {
+  BracketStructure,
+  generatePlayoffBracket,
+  planPlayoffAdvancement,
+  PLAYOFF_BRACKET_ENGINE_VERSION,
+  QualifiedSeed,
+} from './engine';
 import { PlayoffEvents } from './playoff.events';
 import {
   isPlayoffLocked,
@@ -23,13 +39,32 @@ import {
 } from './playoff.lifecycle';
 import { PlayoffRepository } from './playoff.repository';
 
+type MatchVerifiedPayload = {
+  tournamentId?: string;
+  categoryId?: string;
+  matchId?: string;
+  playoffId?: string | null;
+  bracketId?: string | null;
+  bracketPosition?: string | null;
+  result?: { winnerSide: 'A' | 'B' } | null;
+  sides?: { A: string | null; B: string | null };
+};
+
 @Injectable()
-export class PlayoffService {
+export class PlayoffService implements OnModuleInit {
+  private readonly logger = new Logger(PlayoffService.name);
+
   constructor(
     private readonly playoffs: PlayoffRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER)
     private readonly events: DomainEventPublisher,
   ) {}
+
+  onModuleInit() {
+    this.events.subscribe?.(MatchEvents.Verified, (event) =>
+      this.onMatchVerified(event),
+    );
+  }
 
   async getPlayoff(tournamentId: string, categoryId: string) {
     await this.requireCategory(tournamentId, categoryId);
@@ -432,6 +467,204 @@ export class PlayoffService {
       );
     }
     return playoff;
+  }
+
+  async getChampion(tournamentId: string, categoryId: string) {
+    await this.requireCategory(tournamentId, categoryId);
+    const playoff = await this.playoffs.findPlayoffByCategory(categoryId);
+    if (!playoff) {
+      throw new NotFoundException('Playoff not found');
+    }
+    const champion = await this.playoffs.findChampion(playoff.id);
+    if (!champion) {
+      throw new NotFoundException('Champion not declared yet');
+    }
+    return champion;
+  }
+
+  private async onMatchVerified(event: DomainEvent) {
+    const payload = event.payload as MatchVerifiedPayload;
+    if (
+      !payload.playoffId ||
+      !payload.bracketId ||
+      !payload.categoryId ||
+      !payload.tournamentId
+    ) {
+      return;
+    }
+
+    try {
+      await this.advanceOfficialBracket({
+        tournamentId: payload.tournamentId,
+        categoryId: payload.categoryId,
+        playoffId: payload.playoffId,
+        bracketId: payload.bracketId,
+        actorId: null,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Playoff advancement failed for match ${payload.matchId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  async advanceOfficialBracket(params: {
+    tournamentId: string;
+    categoryId: string;
+    playoffId: string;
+    bracketId: string;
+    actorId?: string | null;
+  }) {
+    const playoff = await this.assertPlayoffReady(
+      params.tournamentId,
+      params.categoryId,
+    );
+    if (playoff.id !== params.playoffId) {
+      throw new BadRequestException('Playoff mismatch');
+    }
+    if (playoff.currentOfficialBracketId !== params.bracketId) {
+      // Ignore verified matches on non-official / historical brackets
+      return { created: [], champion: null };
+    }
+
+    const bracket = await this.playoffs.findOfficialBracketWithMatches(
+      params.bracketId,
+    );
+    if (!bracket) {
+      throw new NotFoundException('Official Bracket not found');
+    }
+
+    const structure = this.readStructure(bracket.structureRepresentation);
+    const verified = [];
+    for (const match of bracket.matches) {
+      if (match.status !== MatchStatus.verified || !match.bracketPosition) {
+        continue;
+      }
+      const winnerTeamId = this.winnerTeamIdFromMatch(match);
+      if (!winnerTeamId) {
+        this.logger.warn(
+          `Verified playoff match ${match.id} missing winner; skip`,
+        );
+        continue;
+      }
+      verified.push({
+        bracketPosition: match.bracketPosition,
+        winnerTeamId,
+      });
+    }
+
+    const materializedPositions = bracket.matches
+      .map((m) => m.bracketPosition)
+      .filter((p): p is string => !!p);
+
+    const plan = planPlayoffAdvancement({
+      structure,
+      verified,
+      materializedPositions,
+    });
+
+    const created = await this.playoffs.materializeBracketMatches({
+      playoffId: params.playoffId,
+      categoryId: params.categoryId,
+      bracketId: params.bracketId,
+      matches: plan.create,
+      createdBy: params.actorId ?? undefined,
+    });
+
+    if (created.length > 0) {
+      await this.events.publish({
+        name: PlayoffEvents.Advanced,
+        occurredAt: new Date().toISOString(),
+        payload: {
+          tournamentId: params.tournamentId,
+          categoryId: params.categoryId,
+          playoffId: params.playoffId,
+          bracketId: params.bracketId,
+          createdPositions: plan.create.map((m) => m.bracketPosition),
+          actorId: params.actorId ?? null,
+        },
+      });
+    }
+
+    let champion = null;
+    if (plan.championTeamId) {
+      const existing = await this.playoffs.findChampion(params.playoffId);
+      if (!existing || existing.winningTeamId !== plan.championTeamId) {
+        champion = await this.playoffs.upsertChampion({
+          playoffId: params.playoffId,
+          categoryId: params.categoryId,
+          winningTeamId: plan.championTeamId,
+          declaredBy: params.actorId ?? undefined,
+        });
+        await this.events.publish({
+          name: PlayoffEvents.ChampionDeclared,
+          occurredAt: new Date().toISOString(),
+          payload: {
+            tournamentId: params.tournamentId,
+            categoryId: params.categoryId,
+            playoffId: params.playoffId,
+            winningTeamId: plan.championTeamId,
+            actorId: params.actorId ?? null,
+          },
+        });
+      } else {
+        champion = existing;
+      }
+    }
+
+    return { created, champion };
+  }
+
+  private winnerTeamIdFromMatch(match: {
+    scoreRepresentation: unknown;
+    participations: Array<{ sideLabel: string; teamId: string }>;
+  }): string | null {
+    const state = this.readScoreState(match.scoreRepresentation);
+    if (!state || !isMatchComplete(state)) {
+      return null;
+    }
+    let result;
+    try {
+      result = getMatchResult(state);
+    } catch {
+      return null;
+    }
+    return (
+      match.participations.find((p) => p.sideLabel === result.winnerSide)
+        ?.teamId ?? null
+    );
+  }
+
+  private readStructure(value: unknown): BracketStructure {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BadRequestException('Invalid bracket structureRepresentation');
+    }
+    const raw = value as BracketStructure;
+    if (raw.engineVersion !== PLAYOFF_BRACKET_ENGINE_VERSION) {
+      throw new BadRequestException(
+        `Unsupported bracket engine version: ${String(raw.engineVersion)}`,
+      );
+    }
+    if (!Array.isArray(raw.matches)) {
+      throw new BadRequestException('Bracket structure missing matches');
+    }
+    return raw;
+  }
+
+  private readScoreState(value: unknown): ScoreState | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    const raw = value as Partial<ScoreState>;
+    if (raw.engineVersion !== PADEL_SCORING_ENGINE_VERSION) {
+      return null;
+    }
+    if (!raw.configSnapshot || !Array.isArray(raw.sets)) {
+      return null;
+    }
+    return raw as ScoreState;
   }
 
   private async requirePlayoff(categoryId: string) {

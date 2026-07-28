@@ -12,6 +12,7 @@ import {
   DomainEventPublisher,
 } from '../common/events/domain-event.publisher';
 import { ScheduleService } from '../schedule/schedule.service';
+import { PlayoffService } from '../playoff/playoff.service';
 import { ListMatchesQueryDto } from './dto/list-matches.query.dto';
 import { MatchEvents } from './match.events';
 import { getNextMatchStatus } from './match.lifecycle';
@@ -32,6 +33,7 @@ export class MatchService {
   constructor(
     private readonly matches: MatchRepository,
     private readonly schedules: ScheduleService,
+    private readonly playoffs: PlayoffService,
     @Inject(DOMAIN_EVENT_PUBLISHER)
     private readonly events: DomainEventPublisher,
   ) {}
@@ -42,14 +44,15 @@ export class MatchService {
     query: ListMatchesQueryDto,
   ) {
     await this.requireCategory(tournamentId, categoryId);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 50;
+    const skip = (page - 1) * pageSize;
+
+    // Prefer group-stage Official Schedule; playoff matches listed via playoff/official.
     const schedule = await this.schedules.assertLiveReady(
       tournamentId,
       categoryId,
     );
-
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 50;
-    const skip = (page - 1) * pageSize;
 
     const [items, total] = await this.matches.findManyOfficial({
       categoryId,
@@ -72,14 +75,10 @@ export class MatchService {
 
   async getById(tournamentId: string, categoryId: string, matchId: string) {
     await this.requireCategory(tournamentId, categoryId);
-    const schedule = await this.schedules.assertLiveReady(
+    const match = await this.requireOperableMatch(
       tournamentId,
       categoryId,
-    );
-    const match = await this.requireOfficialMatch(
-      categoryId,
       matchId,
-      schedule.currentOfficialVersionId!,
     );
     return match;
   }
@@ -145,14 +144,10 @@ export class MatchService {
     user: AuthUserView,
   ) {
     const { category } = await this.requireCategory(tournamentId, categoryId);
-    const schedule = await this.schedules.assertLiveReady(
+    const match = await this.requireOperableMatch(
       tournamentId,
       categoryId,
-    );
-    const match = await this.requireOfficialMatch(
-      categoryId,
       matchId,
-      schedule.currentOfficialVersionId!,
     );
 
     if (match.status !== MatchStatus.live) {
@@ -244,6 +239,9 @@ export class MatchService {
       B: null,
     };
     let groupId: string | null = null;
+    let playoffId: string | null = null;
+    let bracketId: string | null = null;
+    let bracketPosition: string | null = null;
 
     return this.transition({
       tournamentId,
@@ -281,6 +279,9 @@ export class MatchService {
         }
 
         groupId = ctx.match.groupId;
+        playoffId = ctx.match.playoffId;
+        bracketId = ctx.match.bracketId;
+        bracketPosition = ctx.match.bracketPosition;
         sideTeams = {
           A:
             ctx.match.participations.find((p) => p.sideLabel === 'A')?.teamId ??
@@ -292,9 +293,12 @@ export class MatchService {
       },
       eventPayload: () => ({
         groupId,
+        playoffId,
+        bracketId,
+        bracketPosition,
         result: extractedResult,
         sides: sideTeams,
-        // Standing Engine (Step 9) consumes this event; MatchService does not update standings.
+        // Standing (group) / Playoff (knockout) consume this; MatchService does not write those domains.
       }),
     });
   }
@@ -353,15 +357,11 @@ export class MatchService {
       params.tournamentId,
       params.categoryId,
     );
-    const schedule = await this.schedules.assertLiveReady(
+
+    const match = await this.requireOperableMatch(
       params.tournamentId,
       params.categoryId,
-    );
-
-    const match = await this.requireOfficialMatch(
-      params.categoryId,
       params.matchId,
-      schedule.currentOfficialVersionId!,
     );
 
     const expected = getNextMatchStatus(match.status);
@@ -395,6 +395,9 @@ export class MatchService {
         toStatus: params.target,
         courtId: match.courtId,
         scheduleVersionId: match.scheduleVersionId,
+        playoffId: match.playoffId,
+        bracketId: match.bracketId,
+        bracketPosition: match.bracketPosition,
         actorId: params.user.id,
         ...(params.eventPayload?.() ?? {}),
       },
@@ -406,8 +409,13 @@ export class MatchService {
   private async assertCourtAvailable(match: {
     id: string;
     courtId: string | null;
+    playoffId?: string | null;
   }) {
+    // Playoff MVP may run without a court assignment.
     if (!match.courtId) {
+      if (match.playoffId) {
+        return;
+      }
       throw new BadRequestException(
         'Match has no Court assigned; cannot occupy court',
       );
@@ -442,6 +450,41 @@ export class MatchService {
         'Referee may only operate assigned Matches (REF-02)',
       );
     }
+  }
+
+  private async requireOperableMatch(
+    tournamentId: string,
+    categoryId: string,
+    matchId: string,
+  ) {
+    const match = await this.matches.findMatchInCategory(categoryId, matchId);
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+
+    if (match.playoffId && match.bracketId) {
+      const playoff = await this.playoffs.assertPlayoffReady(
+        tournamentId,
+        categoryId,
+      );
+      if (match.bracketId !== playoff.currentOfficialBracketId) {
+        throw new BadRequestException(
+          'Match is not on the Official Locked Playoff Bracket',
+        );
+      }
+      return match;
+    }
+
+    const schedule = await this.schedules.assertLiveReady(
+      tournamentId,
+      categoryId,
+    );
+    if (match.scheduleVersionId !== schedule.currentOfficialVersionId) {
+      throw new BadRequestException(
+        'Match is not on the Official Locked Schedule version',
+      );
+    }
+    return match;
   }
 
   private async requireOfficialMatch(

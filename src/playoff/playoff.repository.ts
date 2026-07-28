@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  DeclarationStatus,
   LockState,
   Prisma,
   PublishState,
@@ -383,6 +384,106 @@ export class PlayoffRepository {
             reviewOutcome: true,
           },
         },
+      },
+    });
+  }
+
+  findOfficialBracketWithMatches(bracketId: string) {
+    return this.prisma.bracket.findUnique({
+      where: { id: bracketId },
+      include: {
+        playoff: { select: { id: true, categoryId: true } },
+        matches: {
+          include: {
+            participations: {
+              select: { sideLabel: true, teamId: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async materializeBracketMatches(params: {
+    playoffId: string;
+    categoryId: string;
+    bracketId: string;
+    matches: Array<{
+      bracketPosition: string;
+      teamAId: string;
+      teamBId: string;
+    }>;
+    createdBy?: string;
+  }) {
+    if (params.matches.length === 0) {
+      return [];
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const created = [];
+      for (const m of params.matches) {
+        created.push(
+          await tx.match.create({
+            data: {
+              categoryId: params.categoryId,
+              playoffId: params.playoffId,
+              bracketId: params.bracketId,
+              bracketPosition: m.bracketPosition,
+              createdBy: params.createdBy,
+              updatedBy: params.createdBy,
+              participations: {
+                create: [
+                  { teamId: m.teamAId, sideLabel: 'A' },
+                  { teamId: m.teamBId, sideLabel: 'B' },
+                ],
+              },
+            },
+            include: {
+              participations: {
+                include: { team: { select: { id: true, name: true } } },
+              },
+            },
+          }),
+        );
+      }
+      return created;
+    });
+  }
+
+  findChampion(playoffId: string) {
+    return this.prisma.champion.findUnique({
+      where: { playoffId },
+      include: {
+        winningTeam: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  upsertChampion(params: {
+    playoffId: string;
+    categoryId: string;
+    winningTeamId: string;
+    declaredBy?: string;
+  }) {
+    const now = new Date();
+    return this.prisma.champion.upsert({
+      where: { playoffId: params.playoffId },
+      create: {
+        playoffId: params.playoffId,
+        categoryId: params.categoryId,
+        winningTeamId: params.winningTeamId,
+        declaredBy: params.declaredBy,
+        declaredAt: now,
+        declarationStatus: DeclarationStatus.declared,
+      },
+      update: {
+        winningTeamId: params.winningTeamId,
+        declaredBy: params.declaredBy,
+        declaredAt: now,
+        declarationStatus: DeclarationStatus.declared,
+      },
+      include: {
+        winningTeam: { select: { id: true, name: true } },
       },
     });
   }

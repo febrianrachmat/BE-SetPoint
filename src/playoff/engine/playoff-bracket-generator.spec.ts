@@ -1,9 +1,10 @@
 /**
- * Self-running unit checks for Playoff bracket generator.
+ * Self-running unit checks for Playoff bracket generator + progression.
  * Run: npm run test:playoff
  */
 import assert from 'node:assert/strict';
 import { generatePlayoffBracket } from './playoff-bracket-generator';
+import { planPlayoffAdvancement } from './playoff-progression';
 import { QualifiedSeed } from './playoff.types';
 
 function seed(
@@ -40,6 +41,36 @@ function seed(
   const final = result.structure.matches.find((m) => m.bracketPosition === 'F');
   assert.equal(final?.materialize, false);
   assert.equal(final?.sideA.kind, 'winner_of');
+
+  let plan = planPlayoffAdvancement({
+    structure: result.structure,
+    verified: [{ bracketPosition: 'SF1', winnerTeamId: 'tA1' }],
+    materializedPositions: ['SF1', 'SF2'],
+  });
+  assert.equal(plan.create.length, 0);
+
+  plan = planPlayoffAdvancement({
+    structure: result.structure,
+    verified: [
+      { bracketPosition: 'SF1', winnerTeamId: 'tA1' },
+      { bracketPosition: 'SF2', winnerTeamId: 'tB1' },
+    ],
+    materializedPositions: ['SF1', 'SF2'],
+  });
+  assert.equal(plan.create[0].bracketPosition, 'F');
+  assert.equal(plan.create[0].teamAId, 'tA1');
+  assert.equal(plan.create[0].teamBId, 'tB1');
+
+  plan = planPlayoffAdvancement({
+    structure: result.structure,
+    verified: [
+      { bracketPosition: 'SF1', winnerTeamId: 'tA1' },
+      { bracketPosition: 'SF2', winnerTeamId: 'tB1' },
+      { bracketPosition: 'F', winnerTeamId: 'tA1' },
+    ],
+    materializedPositions: ['SF1', 'SF2', 'F'],
+  });
+  assert.equal(plan.championTeamId, 'tA1');
 }
 
 // --- 1 group × top 2 → Final only ---
@@ -50,8 +81,13 @@ function seed(
   });
   assert.equal(result.materializable.length, 1);
   assert.equal(result.materializable[0].bracketPosition, 'F');
-  assert.equal(result.materializable[0].teamAId, 't1');
-  assert.equal(result.materializable[0].teamBId, 't2');
+
+  const plan = planPlayoffAdvancement({
+    structure: result.structure,
+    verified: [{ bracketPosition: 'F', winnerTeamId: 't2' }],
+    materializedPositions: ['F'],
+  });
+  assert.equal(plan.championTeamId, 't2');
 }
 
 // --- rejects missing seeds ---
