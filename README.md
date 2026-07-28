@@ -68,6 +68,30 @@ npm run prisma:migrate:deploy
 npm run prisma:seed
 ```
 
+## Validation
+
+Engine unit checks (no server or database needed):
+
+```bash
+npm run test:drawing
+npm run test:schedule
+npm run test:match
+npm run test:scoring
+npm run test:standing
+npm run test:playoff
+```
+
+Full tournament simulation over HTTP — Registration → Champion for both
+competition modes. Requires a running server and applied migrations:
+
+```bash
+npm run simulate           # both scenarios
+npm run simulate -- group  # group_then_knockout
+npm run simulate -- cup    # knockout_only
+```
+
+Design and findings: `docs/20-api-validation-phase-0-5.md`.
+
 ## Development Status
 
 **Phase:** Implementation kickoff
@@ -99,14 +123,17 @@ Done:
 - **Step 10B** — Playoff Review → Publish → Official → Lock (Playoff Ready)
 - **Step 10C** — Playoff progression + Champion (auto on verify)
 - **Competition Mode** — `group_then_knockout` | `knockout_only` per Category
+- **Phase 0.5** — Full Tournament Simulation over HTTP for both modes (`npm run simulate`)
 
-Domain engines through Playoff are complete for MVP group → knockout **and** direct cup.
+Domain engines through Playoff are complete for MVP group → knockout **and** direct cup,
+and both flows are validated end-to-end through the API — see `docs/20-api-validation-phase-0-5.md`.
 
 Next (optional polish):
 
-1. Standing Publish/Lock UX
-2. Court assignment for playoff matches
-3. Contested tie Admin resolution UI
+1. Court CRUD API (schedule generation needs courts; DB-only today)
+2. Standing Publish/Lock UX
+3. Court assignment for playoff matches
+4. Contested tie Admin resolution UI
 
 ## Tournament API
 
@@ -297,7 +324,7 @@ Auth: `tournament:manage`
 | GET | `/champion` | Declared Champion (after Final verified) |
 
 - Intake: Standing `qualified` **or** active teams when `competitionMode=knockout_only`
-- MVP pairing group path: A1vsB2 / B1vsA2; cup path: seeded 1vsN, bracket = next power of 2 (2–16) with byes
+- MVP pairing group path: A1vsB2 / B1vsA2; cup path: standard seed order, bracket = next power of 2 (2–16) with byes to top seeds (seeds 1 and 2 can only meet in the Final)
 - Blocks: Drawing/Schedule/Standing rejected for `knockout_only`
 - **Playoff Ready**: Published ∧ Locked — `PlayoffService.assertPlayoffReady()`
 - On playoff match verify: advance dependent bracket slots; declare Champion when Final completes

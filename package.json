@@ -19,7 +19,8 @@
     "test:match": "ts-node --transpile-only src/match/match.lifecycle.spec.ts",
     "test:scoring": "ts-node --transpile-only src/match/scoring/scoring-engine.spec.ts",
     "test:standing": "ts-node --transpile-only src/standing/engine/standing-calculator.spec.ts",
-    "test:playoff": "ts-node --transpile-only src/playoff/engine/playoff-bracket-generator.spec.ts"
+    "test:playoff": "ts-node --transpile-only src/playoff/engine/playoff-bracket-generator.spec.ts",
+    "simulate": "ts-node --transpile-only scripts/simulate-tournament.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

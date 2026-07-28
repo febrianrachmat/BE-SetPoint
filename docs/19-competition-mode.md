@@ -68,12 +68,13 @@ or:
 
 - Entrants **2..16** (any count)
 - Bracket size = **next power of 2**; pad with **byes** when N is not a power of 2
-- Top seeds receive byes (classic pairing: pad nulls at end → 1 vs bye, …)
+- Slots follow the **standard single-elimination seed order** (size 8 → `[1,8,4,5,2,7,3,6]`); consecutive pairs form the first round
+- Seeds above N are absent, so byes land on the top seeds; seeds **1 and 2 can only meet in the Final**
 - Bye slots: no Match row; winner recorded in structure (`byeWinnerTeamId`) and used by advancement
-- On generate: materialize first-round real matches; immediately materialize any next-round matches that are fully known from byes (e.g. bye vs bye → QF)
+- On generate: materialize first-round real matches; immediately materialize any next-round matches that are fully known from byes (e.g. bye vs bye → SF)
 - Order: `seedRank` ASC (nulls last), then `createdAt`; re-numbered contiguous 1..N for pairing
-- Pairing: classic seed within padded bracket
 - Later rounds via existing advancement (10C) including bye winners as automatic verified
+- Engine version `playoff-bracket-v2` (v1 used a mirrored layout that put seeds 1 and 2 in the same half; v1 brackets must be regenerated)
 
 ---
 
@@ -83,4 +84,6 @@ or:
 2. Drawing/Schedule/Standing blocked for `knockout_only`
 3. Playoff generate works for both modes
 4. Unit tests for seeded knockout 2/4/8 **and** bye cases 3/5/6/7
-5. `nest build` green
+5. Seeds 1 and 2 in opposite halves for every bracket size (2..16)
+6. `nest build` green
+7. Both modes reach Champion through the API — `npm run simulate` (`docs/20-api-validation-phase-0-5.md`)

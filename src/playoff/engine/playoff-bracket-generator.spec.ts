@@ -105,7 +105,7 @@ function teams(n: number) {
   assert.equal(afterSf2.create[0].teamBId, 's2');
 }
 
-// --- knockout_only: 5 teams → bracket 8; top 3 bye; SF1 opens immediately ---
+// --- knockout_only: 5 teams → bracket 8; top 3 bye; only 4v5 is played ---
 {
   const result = generateKnockoutBracket({ teams: teams(5) });
   assert.equal(result.structure.bracketSize, 8);
@@ -115,34 +115,38 @@ function teams(n: number) {
     ['s1', 's2', 's3'],
   );
   assert.equal(result.materializable.length, 1);
-  assert.equal(result.materializable[0].bracketPosition, 'QF4');
+  assert.equal(result.materializable[0].bracketPosition, 'QF2');
   assert.equal(result.materializable[0].teamAId, 's4');
   assert.equal(result.materializable[0].teamBId, 's5');
 
+  // s2 vs s3 is fully known from byes; s1's semi-final waits for QF2
   const followUp = planPlayoffAdvancement({
     structure: result.structure,
     verified: result.byeWinners,
     materializedPositions: result.materializable.map((m) => m.bracketPosition),
   });
   assert.equal(followUp.create.length, 1);
-  assert.equal(followUp.create[0].bracketPosition, 'SF1');
-  assert.equal(followUp.create[0].teamAId, 's1');
-  assert.equal(followUp.create[0].teamBId, 's2');
+  assert.equal(followUp.create[0].bracketPosition, 'SF2');
+  assert.equal(followUp.create[0].teamAId, 's2');
+  assert.equal(followUp.create[0].teamBId, 's3');
 }
 
-// --- knockout_only: 6 teams ---
+// --- knockout_only: 6 teams → byes for s1/s2, both semi-finals wait ---
 {
   const result = generateKnockoutBracket({ teams: teams(6) });
   assert.equal(result.structure.bracketSize, 8);
   assert.equal(result.byeWinners.length, 2);
+  assert.deepEqual(
+    result.byeWinners.map((b) => b.winnerTeamId).sort(),
+    ['s1', 's2'],
+  );
   assert.equal(result.materializable.length, 2);
   const followUp = planPlayoffAdvancement({
     structure: result.structure,
     verified: result.byeWinners,
     materializedPositions: result.materializable.map((m) => m.bracketPosition),
   });
-  assert.equal(followUp.create.length, 1);
-  assert.equal(followUp.create[0].bracketPosition, 'SF1');
+  assert.equal(followUp.create.length, 0);
 }
 
 // --- knockout_only: 7 teams ---
@@ -158,6 +162,50 @@ function teams(n: number) {
     materializedPositions: result.materializable.map((m) => m.bracketPosition),
   });
   assert.equal(followUp.create.length, 0);
+}
+
+// --- knockout_only: seeds 1 and 2 may only meet in the Final (all sizes) ---
+{
+  for (const n of [4, 5, 6, 7, 8, 9, 12, 16]) {
+    const result = generateKnockoutBracket({ teams: teams(n) });
+    const structure = result.structure;
+
+    // Walk the bracket to find which final-round side each seed feeds into.
+    const half = new Map<string, 'A' | 'B'>();
+    const final = structure.matches.find((m) => m.bracketPosition === 'F');
+    assert.ok(final, `bracket of ${n} has no Final`);
+
+    const collect = (position: string, side: 'A' | 'B') => {
+      const match = structure.matches.find(
+        (m) => m.bracketPosition === position,
+      );
+      assert.ok(match, `missing match ${position}`);
+      for (const entry of [match.sideA, match.sideB]) {
+        if (entry.kind === 'seed') {
+          half.set(entry.teamId, side);
+        } else if (entry.kind === 'winner_of') {
+          collect(entry.bracketPosition, side);
+        }
+      }
+    };
+
+    if (final.sideA.kind === 'winner_of') {
+      collect(final.sideA.bracketPosition, 'A');
+    } else if (final.sideA.kind === 'seed') {
+      half.set(final.sideA.teamId, 'A');
+    }
+    if (final.sideB.kind === 'winner_of') {
+      collect(final.sideB.bracketPosition, 'B');
+    } else if (final.sideB.kind === 'seed') {
+      half.set(final.sideB.teamId, 'B');
+    }
+
+    assert.notEqual(
+      half.get('s1'),
+      half.get('s2'),
+      `bracket of ${n}: seeds 1 and 2 share a half`,
+    );
+  }
 }
 
 // --- knockout_only: reject <2 and >16 ---

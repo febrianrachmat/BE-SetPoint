@@ -14,6 +14,24 @@ function nextPowerOfTwo(n: number): number {
   return p;
 }
 
+/**
+ * Standard single-elimination slot order, e.g. size 8 → [1,8,4,5,2,7,3,6].
+ * Consecutive pairs form the first round, so the two top seeds sit in opposite
+ * halves and can only meet in the Final.
+ */
+function standardSeedOrder(size: number): number[] {
+  let order = [1];
+  while (order.length < size) {
+    const roundSize = order.length * 2;
+    const next: number[] = [];
+    for (const seed of order) {
+      next.push(seed, roundSize + 1 - seed);
+    }
+    order = next;
+  }
+  return order;
+}
+
 function seedSide(teamId: string, seed: number): BracketSideKnown {
   return {
     kind: 'seed',
@@ -80,11 +98,15 @@ export function generateKnockoutBracket(params: {
   }
 
   const bracketSize = nextPowerOfTwo(n);
-  // Pad with null byes at the end → classic pairing gives byes to top seeds
-  const slots: Array<KnockoutTeamSeed | null> = [...teams];
-  while (slots.length < bracketSize) {
-    slots.push(null);
+  // Seeds above n do not exist → their slot becomes a bye, which the standard
+  // order hands to the top seeds.
+  const bySeed = new Map<number, KnockoutTeamSeed>();
+  for (const team of teams) {
+    bySeed.set(team.seed, team);
   }
+  const slots: Array<KnockoutTeamSeed | null> = standardSeedOrder(
+    bracketSize,
+  ).map((seed) => bySeed.get(seed) ?? null);
 
   const matches: PlannedBracketMatch[] = [];
   const byeWinners: GenerateBracketResult['byeWinners'] = [];
@@ -93,8 +115,8 @@ export function generateKnockoutBracket(params: {
   const firstPositions: string[] = [];
 
   for (let i = 0; i < bracketSize / 2; i += 1) {
-    const a = slots[i];
-    const b = slots[bracketSize - 1 - i];
+    const a = slots[i * 2];
+    const b = slots[i * 2 + 1];
     const pos =
       firstRound === 'final' ? 'F' : `${firstPrefix}${i + 1}`;
     firstPositions.push(pos);

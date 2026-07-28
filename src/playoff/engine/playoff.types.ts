@@ -1,4 +1,9 @@
-export const PLAYOFF_BRACKET_ENGINE_VERSION = 'playoff-bracket-v1';
+/**
+ * v2 changed cup slot allocation to the standard single-elimination seed order
+ * (seeds 1 and 2 only meet in the Final). Brackets stored under v1 must be
+ * regenerated rather than reinterpreted.
+ */
+export const PLAYOFF_BRACKET_ENGINE_VERSION = 'playoff-bracket-v2';
 
 export type PairingMode = 'cross_group_standard' | 'seeded_knockout';
 

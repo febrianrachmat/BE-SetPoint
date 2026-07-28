@@ -64,7 +64,7 @@ Base: `/api/v1/tournaments/:tournamentId/categories/:categoryId/playoff`
 ## 5. Artifacts
 
 - `Playoff.qualificationBasis` e.g. `qualifyTop=2;pairing=cross_group_standard`
-- `Bracket.structureRepresentation` JSON (`playoff-bracket-v1`)
+- `Bracket.structureRepresentation` JSON (`playoff-bracket-v2`)
 - `Match`: `playoffId`, `bracketId`, `bracketPosition` (`SF1`, `SF2`, …)
 
 ---
