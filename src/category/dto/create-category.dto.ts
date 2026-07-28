@@ -28,7 +28,12 @@ export class CreateCategoryDto {
   visibility?: Visibility;
 
   @ApiPropertyOptional({
-    example: { teamSize: 2, scoring: 'best_of_3' },
+    example: {
+      teamSize: 2,
+      groupCount: 2,
+      teamsPerGroup: 4,
+      scoring: { templateId: 'one_set_6_gp_tb5' },
+    },
   })
   @IsOptional()
   @IsObject()

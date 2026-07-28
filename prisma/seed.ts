@@ -61,6 +61,51 @@ async function clearDemoTournament() {
   const categoryIds = categories.map((c) => c.id);
 
   if (categoryIds.length > 0) {
+    const schedules = await prisma.schedule.findMany({
+      where: { categoryId: { in: categoryIds } },
+      select: { id: true },
+    });
+    const scheduleIds = schedules.map((s) => s.id);
+
+    if (scheduleIds.length > 0) {
+      const scheduleVersions = await prisma.scheduleVersion.findMany({
+        where: { scheduleId: { in: scheduleIds } },
+        select: { id: true },
+      });
+      const scheduleVersionIds = scheduleVersions.map((v) => v.id);
+
+      if (scheduleVersionIds.length > 0) {
+        await prisma.scheduleEntry.deleteMany({
+          where: { scheduleVersionId: { in: scheduleVersionIds } },
+        });
+        await prisma.matchParticipation.deleteMany({
+          where: {
+            match: { scheduleVersionId: { in: scheduleVersionIds } },
+          },
+        });
+        await prisma.match.deleteMany({
+          where: { scheduleVersionId: { in: scheduleVersionIds } },
+        });
+        await prisma.schedule.updateMany({
+          where: { id: { in: scheduleIds } },
+          data: { currentOfficialVersionId: null },
+        });
+        await prisma.scheduleVersion.deleteMany({
+          where: { id: { in: scheduleVersionIds } },
+        });
+      }
+
+      await prisma.schedule.deleteMany({ where: { id: { in: scheduleIds } } });
+    }
+
+    // Orphan category matches (if any)
+    await prisma.matchParticipation.deleteMany({
+      where: { match: { categoryId: { in: categoryIds } } },
+    });
+    await prisma.match.deleteMany({
+      where: { categoryId: { in: categoryIds } },
+    });
+
     const drawings = await prisma.drawing.findMany({
       where: { categoryId: { in: categoryIds } },
       select: { id: true },
@@ -224,7 +269,16 @@ async function seed() {
           teamSize: 2,
           groupCount: def.groupCount,
           teamsPerGroup: def.teamsPerGroup,
-          scoring: 'best_of_3',
+          scoring: {
+            templateId: 'one_set_6_gp_tb5',
+            matchFormat: 'best_of_1',
+            gamesTo: 6,
+            mustWinBy: 2,
+            deuceMode: 'golden_point',
+            decidingSet: 'full_set',
+            tieBreak: { atGames: 5, pointsTo: 7, mustWinBy: 2 },
+            matchTieBreak: { atGames: 0, pointsTo: 10, mustWinBy: 2 },
+          },
         },
       },
     });

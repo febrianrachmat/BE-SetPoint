@@ -14,7 +14,10 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
-    "test:drawing": "ts-node --transpile-only src/drawing/engine/drawing-generator.spec.ts"
+    "test:drawing": "ts-node --transpile-only src/drawing/engine/drawing-generator.spec.ts",
+    "test:schedule": "ts-node --transpile-only src/schedule/engine/schedule-generator.spec.ts",
+    "test:match": "ts-node --transpile-only src/match/match.lifecycle.spec.ts",
+    "test:scoring": "ts-node --transpile-only src/match/scoring/scoring-engine.spec.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

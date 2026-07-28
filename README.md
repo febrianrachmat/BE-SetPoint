@@ -86,11 +86,16 @@ Done:
 - **Step 6A** — Drawing Generation (candidate versions, Groups, GroupMembers; no Match/Publish/Lock)
 - **Step 6B** — Drawing Versioning (Review → Publish → Official; history preserved)
 - **Step 6C** — Drawing Lock (freeze registration / withdraw / category structure)
+- **Step 7** — Schedule Generation (RR matches + ScheduleEntry from Official Locked Drawing)
+- **Step 7B** — Schedule Versioning (Review → Publish → Official)
+- **Step 7C** — Schedule Lock (+ Live Ready gate for Step 8)
+- **Step 8A** — Match Lifecycle (waiting → warm_up → live → finished → verified)
+- **Step 8B** — Scoring Engine (pure padel point/game/set; finish gated on completed score)
 
 Next:
 
-1. Step 7 — Schedule Generation (Match + ScheduleEntry)
-2. Step 8+ — Live Match → Standing → Playoff
+1. Step 8C+ — Harden verification / events
+2. Step 9 — Standing Engine (on Verified) → Playoff
 
 ## Tournament API
 
@@ -184,6 +189,55 @@ Step 7 API: `POST .../schedule/generate` — **no** `drawingVersionId` in the bo
 - Stores `drawingSeed`, `prngAlgorithm` (`mulberry32-v1` for random), `engineVersion`, `generationDurationMs`
 - Does **not** create Matches; Publish does **not** Lock
 - Unit checks: `npm run test:drawing`
+
+## Schedule API (Step 7 / 7B / 7C)
+
+Base: `/api/v1/tournaments/:tournamentId/categories/:categoryId/schedule`
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | Schedule header |
+| GET | `/official` | Current official version detail |
+| POST | `/generate` | Candidate version + Matches + ScheduleEntries |
+| GET | `/versions` | History |
+| GET | `/versions/:versionId` | Detail with entries/matches |
+| POST | `/versions/:versionId/review` | Approve/reject candidate |
+| POST | `/versions/:versionId/publish` | Make official (requires approved review) |
+| POST | `/lock` | Lock published Schedule |
+| POST | `/unlock` | Exceptional unlock — `{ "reason": "..." }` |
+
+`POST /generate` optional body: `{ "startAt?", "matchDurationMinutes?" }` — **never** `drawingVersionId`.
+
+Flow: **Generate → Review(approve) → Publish(official) → Lock**.
+
+- Requires Schedule Ready (Drawing Published ∧ Locked)
+- Conflicts block approve/publish path when `conflictStatus=conflict`
+- **Live Ready** (for Step 8): Schedule Published ∧ Locked — `ScheduleService.assertLiveReady()`
+- Unit: `npm run test:schedule`
+
+## Match API (Step 8A / 8B)
+
+Base: `/api/v1/tournaments/:tournamentId/categories/:categoryId/matches`
+
+Auth: `match:score` (tournament_admin + referee; referee only on assigned matches).
+
+Requires **Live Ready** Schedule. Only Official schedule version matches.
+
+| Method | Path | Transition |
+| --- | --- | --- |
+| GET | `/` | list (+ status filter) |
+| GET | `/:matchId` | detail |
+| POST | `/:matchId/warm-up` | waiting → warm_up (Tournament must be Live) |
+| POST | `/:matchId/start` | warm_up → live (snapshots scoring config) |
+| POST | `/:matchId/score/point` | apply point `{ "side": "A"\|"B" }` while live |
+| POST | `/:matchId/finish` | live → finished (requires completed score) |
+| POST | `/:matchId/verify` | finished → verified (Admin only in MVP) |
+
+Invariants:
+- One occupying Match per Court (`warm_up` / `live`)
+- Scoring config from `Category.configuration.scoring` (template + overrides); snapshot at `start`
+- Finished ≠ Standing update; Verified emits event but Standing recalc is Step 9
+- Unit: `npm run test:match`, `npm run test:scoring`
 
 ## Auth
 

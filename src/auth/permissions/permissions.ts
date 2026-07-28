@@ -13,7 +13,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.TOURNAMENT_MANAGE,
     Permission.MATCH_SCORE,
   ],
-  [UserRole.tournament_admin]: [Permission.TOURNAMENT_MANAGE],
+  [UserRole.tournament_admin]: [
+    Permission.TOURNAMENT_MANAGE,
+    Permission.MATCH_SCORE,
+  ],
   [UserRole.referee]: [Permission.MATCH_SCORE],
 };
 
