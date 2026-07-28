@@ -266,6 +266,7 @@ async function seed() {
         visibility: Visibility.private,
         publishState: PublishState.unpublished,
         configuration: {
+          competitionMode: 'group_then_knockout',
           teamSize: 2,
           groupCount: def.groupCount,
           teamsPerGroup: def.teamsPerGroup,

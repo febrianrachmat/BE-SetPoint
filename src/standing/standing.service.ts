@@ -12,6 +12,7 @@ import {
   DomainEvent,
   DomainEventPublisher,
 } from '../common/events/domain-event.publisher';
+import { resolveCompetitionMode } from '../category/competition-mode';
 import { MatchEvents } from '../match/match.events';
 import {
   calculateGroupStandings,
@@ -84,6 +85,13 @@ export class StandingService implements OnModuleInit {
     params: { groupId?: string; actorId?: string } = {},
   ) {
     const { category } = await this.requireCategory(tournamentId, categoryId);
+
+    if (resolveCompetitionMode(category.configuration) === 'knockout_only') {
+      throw new BadRequestException(
+        'Standing is not used for knockout_only categories',
+      );
+    }
+
     const config = resolveStandingsConfig(category.configuration);
 
     const drawing = await this.standings.findDrawing(categoryId);

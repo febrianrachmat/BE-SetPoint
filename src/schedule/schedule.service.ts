@@ -14,6 +14,7 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../common/events/domain-event.publisher';
+import { resolveCompetitionMode } from '../category/competition-mode';
 import { DrawingService } from '../drawing/drawing.service';
 import { GenerateScheduleDto } from './dto/generate-schedule.dto';
 import { ReviewScheduleVersionDto } from './dto/review-schedule-version.dto';
@@ -94,6 +95,12 @@ export class ScheduleService {
       tournamentId,
       categoryId,
     );
+
+    if (resolveCompetitionMode(category.configuration) === 'knockout_only') {
+      throw new BadRequestException(
+        'Schedule is not used for knockout_only categories; generate Playoff directly',
+      );
+    }
 
     const drawing = await this.drawings.assertScheduleReady(
       tournamentId,

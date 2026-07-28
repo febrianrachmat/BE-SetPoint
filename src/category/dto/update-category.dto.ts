@@ -31,9 +31,8 @@ export class UpdateCategoryDto {
 
   @ApiPropertyOptional({
     example: {
+      competitionMode: 'knockout_only',
       teamSize: 2,
-      groupCount: 2,
-      teamsPerGroup: 4,
       scoring: { templateId: 'one_set_6_gp_tb5' },
     },
   })

@@ -6,6 +6,7 @@ import {
   PublishState,
   QualificationStatus,
   ReviewStatus,
+  TeamStatus,
   VersionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -131,6 +132,26 @@ export class PlayoffRepository {
         group: { select: { id: true, name: true, label: true } },
       },
       orderBy: [{ groupId: 'asc' }, { rankPosition: 'asc' }],
+    });
+  }
+
+  findActiveTeamsForKnockout(categoryId: string) {
+    return this.prisma.team.findMany({
+      where: {
+        categoryId,
+        deletedAt: null,
+        status: TeamStatus.active,
+      },
+      select: {
+        id: true,
+        name: true,
+        seedRank: true,
+        createdAt: true,
+      },
+      orderBy: [
+        { seedRank: 'asc' },
+        { createdAt: 'asc' },
+      ],
     });
   }
 

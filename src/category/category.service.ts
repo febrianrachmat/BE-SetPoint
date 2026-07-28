@@ -23,6 +23,7 @@ import { CategoryRepository } from './category.repository';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { ListCategoriesQueryDto } from './dto/list-categories.query.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { normalizeCategoryConfiguration } from './competition-mode';
 
 @Injectable()
 export class CategoryService {
@@ -70,12 +71,23 @@ export class CategoryService {
     this.assertTournamentAllowsCategoryMutation(tournament);
 
     try {
+      let configuration: Prisma.InputJsonValue | undefined;
+      try {
+        configuration = normalizeCategoryConfiguration(
+          dto.configuration,
+        ) as Prisma.InputJsonValue;
+      } catch (err) {
+        throw new BadRequestException(
+          err instanceof Error ? err.message : 'Invalid category configuration',
+        );
+      }
+
       const category = await this.categories.create({
         tournamentId,
         name: dto.name,
         format: dto.format,
         visibility: dto.visibility,
-        configuration: dto.configuration as Prisma.InputJsonValue | undefined,
+        configuration,
         createdBy: user.id,
       });
 
@@ -121,12 +133,31 @@ export class CategoryService {
     }
 
     try {
+      let configuration:
+        | Prisma.InputJsonValue
+        | typeof Prisma.DbNull
+        | undefined;
+      if (dto.configuration === null) {
+        configuration = Prisma.DbNull;
+      } else if (dto.configuration !== undefined) {
+        try {
+          configuration = normalizeCategoryConfiguration(
+            dto.configuration,
+          ) as Prisma.InputJsonValue;
+        } catch (err) {
+          throw new BadRequestException(
+            err instanceof Error
+              ? err.message
+              : 'Invalid category configuration',
+          );
+        }
+      }
+
       const updated = await this.categories.update(categoryId, {
-        ...dto,
-        configuration:
-          dto.configuration === null
-            ? Prisma.DbNull
-            : (dto.configuration as Prisma.InputJsonValue | undefined),
+        name: dto.name,
+        format: dto.format,
+        visibility: dto.visibility,
+        configuration,
         updatedBy: user.id,
       });
 

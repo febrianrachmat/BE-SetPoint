@@ -29,11 +29,14 @@ export class CreateCategoryDto {
 
   @ApiPropertyOptional({
     example: {
+      competitionMode: 'group_then_knockout',
       teamSize: 2,
       groupCount: 2,
       teamsPerGroup: 4,
       scoring: { templateId: 'one_set_6_gp_tb5' },
     },
+    description:
+      'competitionMode: group_then_knockout | knockout_only (default group_then_knockout)',
   })
   @IsOptional()
   @IsObject()

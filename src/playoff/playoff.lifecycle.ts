@@ -1,10 +1,12 @@
 import { LockState, PublishState, TournamentStatus } from '@prisma/client';
 
 export const PLAYOFF_GENERATION_TOURNAMENT_STATUSES: TournamentStatus[] = [
+  TournamentStatus.published,
   TournamentStatus.live,
 ];
 
 export const PLAYOFF_PUBLISH_TOURNAMENT_STATUSES: TournamentStatus[] = [
+  TournamentStatus.published,
   TournamentStatus.live,
 ];
 

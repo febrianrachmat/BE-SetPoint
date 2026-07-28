@@ -98,8 +98,9 @@ Done:
 - **Step 10A** — Playoff Bracket Generator (candidate Bracket from qualified seeds)
 - **Step 10B** — Playoff Review → Publish → Official → Lock (Playoff Ready)
 - **Step 10C** — Playoff progression + Champion (auto on verify)
+- **Competition Mode** — `group_then_knockout` | `knockout_only` per Category
 
-Domain engines through Playoff are complete for MVP group → knockout.
+Domain engines through Playoff are complete for MVP group → knockout **and** direct cup.
 
 Next (optional polish):
 
@@ -137,6 +138,13 @@ Nested under tournament. Same auth as Tournament (`tournament:manage`). Param `t
 | POST | `/` | create (Draft/Setup/Published) |
 | PATCH | `/:categoryId` | update when unlocked; blocks if published/locked artifacts |
 | DELETE | `/:categoryId` | soft delete (CAT-05: no verified matches / published artifacts) |
+
+`configuration.competitionMode` (required conceptually; defaulted on write):
+
+| Value | Meaning |
+| --- | --- |
+| `group_then_knockout` | Drawing → Schedule → Standing → Playoff (default) |
+| `knockout_only` | Skip Drawing/Schedule/Standing; Playoff from active teams (2–16, byes when needed) |
 
 ### Teams — `.../categories/:categoryId/teams`
 
@@ -288,9 +296,9 @@ Auth: `tournament:manage`
 | POST | `/unlock` | `{ reason }` mandatory |
 | GET | `/champion` | Declared Champion (after Final verified) |
 
-- Intake: Standing `qualified` only (does not recompute ranks)
-- MVP pairing `cross_group_standard`: A1vsB2 / B1vsA2 (+ Final slot TBD); 1-group → Final A1vsA2
-- Blocks: tournament not live, playoff locked, `qualification_blocked_tie`, unsupported shape
+- Intake: Standing `qualified` **or** active teams when `competitionMode=knockout_only`
+- MVP pairing group path: A1vsB2 / B1vsA2; cup path: seeded 1vsN, bracket = next power of 2 (2–16) with byes
+- Blocks: Drawing/Schedule/Standing rejected for `knockout_only`
 - **Playoff Ready**: Published ∧ Locked — `PlayoffService.assertPlayoffReady()`
 - On playoff match verify: advance dependent bracket slots; declare Champion when Final completes
 - Unit: `npm run test:playoff`

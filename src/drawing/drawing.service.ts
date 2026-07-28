@@ -11,6 +11,7 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../common/events/domain-event.publisher';
+import { resolveCompetitionMode } from '../category/competition-mode';
 import { DrawingEvents } from './drawing.events';
 import {
   DRAWING_GENERATION_TOURNAMENT_STATUSES,
@@ -96,6 +97,12 @@ export class DrawingService {
     if (!DRAWING_GENERATION_TOURNAMENT_STATUSES.includes(tournament.status)) {
       throw new BadRequestException(
         `Drawing generation is not allowed while tournament is '${tournament.status}'`,
+      );
+    }
+
+    if (resolveCompetitionMode(category.configuration) === 'knockout_only') {
+      throw new BadRequestException(
+        'Drawing is not used for knockout_only categories; generate Playoff directly',
       );
     }
 

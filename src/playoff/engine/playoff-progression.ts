@@ -27,6 +27,9 @@ function resolveSide(
   if (side.kind === 'seed') {
     return side.teamId;
   }
+  if (side.kind === 'bye') {
+    return null;
+  }
   return winners.get(side.bracketPosition) ?? null;
 }
 
@@ -49,12 +52,18 @@ export function planPlayoffAdvancement(params: {
   const winners = new Map(
     params.verified.map((v) => [v.bracketPosition, v.winnerTeamId]),
   );
+  // Bye slots from structure are automatic winners
+  for (const planned of params.structure.matches) {
+    if (planned.byeWinnerTeamId && !winners.has(planned.bracketPosition)) {
+      winners.set(planned.bracketPosition, planned.byeWinnerTeamId);
+    }
+  }
+
   const materialized = new Set(params.materializedPositions);
   const create: AdvancementPlan['create'] = [];
 
   for (const planned of params.structure.matches) {
-    if (planned.materialize) {
-      // Already created at generate time
+    if (planned.materialize || planned.byeWinnerTeamId) {
       continue;
     }
     if (materialized.has(planned.bracketPosition)) {

@@ -13,6 +13,7 @@ import {
   DomainEvent,
   DomainEventPublisher,
 } from '../common/events/domain-event.publisher';
+import { resolveCompetitionMode } from '../category/competition-mode';
 import { MatchEvents } from '../match/match.events';
 import {
   getMatchResult,
@@ -25,6 +26,7 @@ import { ReviewBracketDto } from './dto/review-bracket.dto';
 import { UnlockPlayoffDto } from './dto/unlock-playoff.dto';
 import {
   BracketStructure,
+  generateKnockoutBracket,
   generatePlayoffBracket,
   planPlayoffAdvancement,
   PLAYOFF_BRACKET_ENGINE_VERSION,
@@ -131,28 +133,32 @@ export class PlayoffService implements OnModuleInit {
       !PLAYOFF_GENERATION_TOURNAMENT_STATUSES.includes(tournament.status)
     ) {
       throw new BadRequestException(
-        `Playoff generation is not allowed while tournament is '${tournament.status}' (MVP: live)`,
+        `Playoff generation is not allowed while tournament is '${tournament.status}' (MVP: published|live)`,
       );
     }
 
-    const drawing = await this.playoffs.findDrawing(categoryId);
-    if (
-      !drawing?.currentOfficialVersionId ||
-      drawing.publishState !== PublishState.published ||
-      drawing.lockState !== LockState.locked
-    ) {
-      throw new BadRequestException(
-        'Playoff generation requires Official Locked Drawing',
-      );
-    }
+    const competitionMode = resolveCompetitionMode(category.configuration);
 
-    const blocked = await this.playoffs.findBlockedQualificationNotes(
-      categoryId,
-    );
-    if (blocked) {
-      throw new BadRequestException(
-        'Playoff generation blocked: unresolved qualification ties (STD-05)',
+    if (competitionMode === 'group_then_knockout') {
+      const drawing = await this.playoffs.findDrawing(categoryId);
+      if (
+        !drawing?.currentOfficialVersionId ||
+        drawing.publishState !== PublishState.published ||
+        drawing.lockState !== LockState.locked
+      ) {
+        throw new BadRequestException(
+          'Playoff generation requires Official Locked Drawing',
+        );
+      }
+
+      const blocked = await this.playoffs.findBlockedQualificationNotes(
+        categoryId,
       );
+      if (blocked) {
+        throw new BadRequestException(
+          'Playoff generation blocked: unresolved qualification ties (STD-05)',
+        );
+      }
     }
 
     let playoff = await this.playoffs.findPlayoffByCategory(categoryId);
@@ -180,38 +186,59 @@ export class PlayoffService implements OnModuleInit {
       );
     }
 
-    const standingsConfig = resolveStandingsConfig(category.configuration);
-    const qualifiedRows = await this.playoffs.findQualifiedStandings(
-      categoryId,
-    );
-
-    const seeds: QualifiedSeed[] = [];
-    for (const row of qualifiedRows) {
-      if (!row.groupId || !row.group || !row.rankPosition) {
-        throw new BadRequestException(
-          `Qualified standing for team ${row.teamId} missing group/rank`,
-        );
-      }
-      const groupKey = (row.group.label ?? row.group.name).trim();
-      if (!groupKey) {
-        throw new BadRequestException(
-          `Group ${row.groupId} has empty label/name`,
-        );
-      }
-      seeds.push({
-        teamId: row.teamId,
-        groupId: row.groupId,
-        groupKey,
-        rankPosition: row.rankPosition,
-      });
-    }
-
     let plan;
+    let qualificationBasis: string;
+
     try {
-      plan = generatePlayoffBracket({
-        seeds,
-        qualifyTop: standingsConfig.qualifyTop,
-      });
+      if (competitionMode === 'knockout_only') {
+        const teams = await this.playoffs.findActiveTeamsForKnockout(
+          categoryId,
+        );
+        const seeded = teams.map((team, index) => ({
+          teamId: team.id,
+          seed: team.seedRank ?? index + 1,
+        }));
+        // Re-number contiguous 1..N by sort order for generator
+        const ordered = [...seeded].sort((a, b) => a.seed - b.seed);
+        const contiguous = ordered.map((t, i) => ({
+          teamId: t.teamId,
+          seed: i + 1,
+        }));
+        plan = generateKnockoutBracket({ teams: contiguous });
+        qualificationBasis = `competitionMode=knockout_only;entrants=${contiguous.length};bracketSize=${plan.structure.bracketSize};pairing=seeded_knockout`;
+      } else {
+        const standingsConfig = resolveStandingsConfig(category.configuration);
+        const qualifiedRows = await this.playoffs.findQualifiedStandings(
+          categoryId,
+        );
+
+        const seeds: QualifiedSeed[] = [];
+        for (const row of qualifiedRows) {
+          if (!row.groupId || !row.group || !row.rankPosition) {
+            throw new BadRequestException(
+              `Qualified standing for team ${row.teamId} missing group/rank`,
+            );
+          }
+          const groupKey = (row.group.label ?? row.group.name).trim();
+          if (!groupKey) {
+            throw new BadRequestException(
+              `Group ${row.groupId} has empty label/name`,
+            );
+          }
+          seeds.push({
+            teamId: row.teamId,
+            groupId: row.groupId,
+            groupKey,
+            rankPosition: row.rankPosition,
+          });
+        }
+
+        plan = generatePlayoffBracket({
+          seeds,
+          qualifyTop: standingsConfig.qualifyTop,
+        });
+        qualificationBasis = `competitionMode=group_then_knockout;qualifyTop=${standingsConfig.qualifyTop};pairing=cross_group_standard`;
+      }
     } catch (err) {
       throw new BadRequestException(
         err instanceof Error ? err.message : 'Unable to generate bracket',
@@ -221,7 +248,6 @@ export class PlayoffService implements OnModuleInit {
     const versionNumber = await this.playoffs.nextBracketVersionNumber(
       playoff.id,
     );
-    const qualificationBasis = `qualifyTop=${standingsConfig.qualifyTop};pairing=cross_group_standard`;
 
     const bracket = await this.playoffs.createCandidateBracket({
       playoffId: playoff.id,
@@ -233,6 +259,27 @@ export class PlayoffService implements OnModuleInit {
       createdBy: user.id,
     });
 
+    // Cup byes: auto-advance winners so next-round matches that are fully known
+    // (e.g. bye vs bye → QF) materialize immediately without waiting for verify.
+    let matchCount = plan.materializable.length;
+    if (plan.byeWinners.length > 0) {
+      const followUp = planPlayoffAdvancement({
+        structure: plan.structure,
+        verified: plan.byeWinners,
+        materializedPositions: plan.materializable.map((m) => m.bracketPosition),
+      });
+      if (followUp.create.length > 0) {
+        await this.playoffs.materializeBracketMatches({
+          playoffId: playoff.id,
+          categoryId,
+          bracketId: bracket.id,
+          matches: followUp.create,
+          createdBy: user.id,
+        });
+        matchCount += followUp.create.length;
+      }
+    }
+
     await this.events.publish({
       name: PlayoffEvents.BracketGenerated,
       occurredAt: new Date().toISOString(),
@@ -242,8 +289,10 @@ export class PlayoffService implements OnModuleInit {
         playoffId: playoff.id,
         bracketId: bracket.id,
         versionNumber,
-        matchCount: plan.materializable.length,
+        matchCount,
+        byeCount: plan.byeWinners.length,
         qualificationBasis,
+        competitionMode,
         actorId: user.id,
       },
     });

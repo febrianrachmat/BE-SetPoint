@@ -134,5 +134,6 @@ export function generatePlayoffBracket(params: {
       matches,
     },
     materializable,
+    byeWinners: [],
   };
 }
