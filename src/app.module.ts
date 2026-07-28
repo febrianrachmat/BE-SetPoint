@@ -8,6 +8,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { CategoryModule } from './category/category.module';
 import { DrawingModule } from './drawing/drawing.module';
 import { MatchModule } from './match/match.module';
+import { PlayoffModule } from './playoff/playoff.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { StandingModule } from './standing/standing.module';
 import { TournamentModule } from './tournament/tournament.module';
@@ -26,6 +27,7 @@ import { TournamentModule } from './tournament/tournament.module';
     ScheduleModule,
     MatchModule,
     StandingModule,
+    PlayoffModule,
   ],
   controllers: [AppController],
   providers: [AppService],

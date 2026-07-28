@@ -95,11 +95,12 @@ Done:
 - **Step 9A** — Standing Engine (group W-L-P + rank from Verified; auto on `match.verified`)
 - **Step 9B** — Tie-break policy pipeline (`tieBreakOrder`, H2H mini-table; no silent random)
 - **Step 9C** — Qualification (`qualifyTop` → `qualificationStatus` for Playoff intake)
+- **Step 10A** — Playoff Bracket Generator (candidate Bracket from qualified seeds)
 
 Next:
 
-1. Step 10A — Playoff Bracket Generator (from Qualified teams)
-2. Step 10B/C — Playoff match lifecycle + Champion
+1. Step 10B — Playoff Review → Publish → Official → Lock
+2. Step 10C — Playoff match progression + Champion
 
 ## Tournament API
 
@@ -262,6 +263,25 @@ Auth: `tournament:manage`
 - `random_draw` in order marks `random_draw_pending` (Admin); never auto-shuffles
 - Qualification: top `qualifyTop` per group; ambiguous cutoff → `qualification_blocked_tie`
 - Unit: `npm run test:standing`
+
+## Playoff API (Step 10A)
+
+Base: `/api/v1/tournaments/:tournamentId/categories/:categoryId/playoff`
+
+Auth: `tournament:manage`
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | Playoff header |
+| POST | `/generate` | Candidate Bracket from qualified standings |
+| GET | `/brackets` | Version history |
+| GET | `/brackets/:bracketId` | Detail + matches |
+
+- Intake: Standing `qualified` only (does not recompute ranks)
+- MVP pairing `cross_group_standard`: A1vsB2 / B1vsA2 (+ Final slot TBD); 1-group → Final A1vsA2
+- Blocks: tournament not live, playoff locked, `qualification_blocked_tie`, unsupported shape
+- Review/Publish/Lock deferred to 10B
+- Unit: `npm run test:playoff`
 
 ## Auth
 

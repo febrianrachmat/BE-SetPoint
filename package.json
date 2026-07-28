@@ -18,7 +18,8 @@
     "test:schedule": "ts-node --transpile-only src/schedule/engine/schedule-generator.spec.ts",
     "test:match": "ts-node --transpile-only src/match/match.lifecycle.spec.ts",
     "test:scoring": "ts-node --transpile-only src/match/scoring/scoring-engine.spec.ts",
-    "test:standing": "ts-node --transpile-only src/standing/engine/standing-calculator.spec.ts"
+    "test:standing": "ts-node --transpile-only src/standing/engine/standing-calculator.spec.ts",
+    "test:playoff": "ts-node --transpile-only src/playoff/engine/playoff-bracket-generator.spec.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
