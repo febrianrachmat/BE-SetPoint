@@ -61,7 +61,11 @@ export class ScheduleRepository {
         deletedAt: null,
         status: CourtStatus.available,
       },
-      orderBy: [{ label: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [
+        { displayOrder: 'asc' },
+        { label: 'asc' },
+        { createdAt: 'asc' },
+      ],
       select: { id: true, name: true, label: true },
     });
   }

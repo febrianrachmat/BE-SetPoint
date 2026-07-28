@@ -277,6 +277,7 @@ model Court {
   name              String      @db.VarChar(200)
   label             String      @db.VarChar(50)
   status            CourtStatus @default(available)
+  displayOrder      Int         @default(0) @map("display_order")
   availabilityNotes String?     @map("availability_notes")
   rowVersion        Int         @default(1) @map("row_version")
 
@@ -293,6 +294,7 @@ model Court {
   scheduleEntries ScheduleEntry[] @relation("ScheduleEntryCourt")
 
   @@index([tournamentId], map: "idx_courts_tournament")
+  @@index([tournamentId, displayOrder], map: "idx_courts_tournament_order")
   @@map("courts")
 }
 

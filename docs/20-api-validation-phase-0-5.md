@@ -86,6 +86,10 @@ the champion are predictable and can be asserted rather than merely logged.
 | Match verify before `finished` | MATCH-03 |
 | Playoff publish before review approval | REV-02 |
 | Drawing / Schedule / Standing on `knockout_only` | Competition Mode |
+| Duplicate court label in one tournament | 409 conflict |
+| Partial court reorder list | Order must stay contiguous |
+| Disabling an already disabled court | Idempotency is explicit, not silent |
+| Deleting a court a Schedule references | Disable instead |
 
 **Cup integrity**
 
@@ -125,15 +129,27 @@ Because bracket layout semantics changed, the engine version was raised to
 `playoff-bracket-v2`. Brackets stored under `playoff-bracket-v1` must be
 regenerated; they are rejected rather than reinterpreted.
 
-### 5.3 Court has no HTTP API (open gap)
+### 5.3 Court had no HTTP API (closed)
 
-Schedule generation requires at least one available Court (SCH-02), but Court is
-only reachable through the database or `prisma/seed.ts`. The simulation
-provisions courts directly via Prisma and prints a `[note]` for it.
+Schedule generation requires at least one available Court (SCH-02), but Court was
+only reachable through the database or `prisma/seed.ts`. This was not a bug — it
+was a **missing product capability**, and it only became visible by trying to run
+the platform the way an organizer would.
 
-Every other step in both scenarios runs through the public API. An Admin UI will
-need a Court CRUD surface before an organizer can prepare a tournament without
-DB access.
+Resolution: a Court module with CRUD, `enable` / `disable`, and `reorder`. The
+simulation now creates its courts through the API and touches no database
+directly, so it validates exactly what a frontend can do.
+
+Two rules came out of implementing it:
+
+- Court mutations stay open while the tournament is `live`, because taking a
+  flooded or damaged court out of the pool is an in-event operation. They close
+  at `finished` / `archived`.
+- A court referenced by a Schedule cannot be deleted, only disabled. History
+  must stay explainable.
+
+Ordering needed a new `courts.display_order` column: sorting by label puts
+"Court 10" before "Court 2".
 
 ---
 
@@ -141,12 +157,12 @@ DB access.
 
 | Metric | Value |
 | --- | --- |
-| Assertions | 43 |
-| Gate rejections verified | 10 |
+| Assertions | 47 |
+| Gate rejections verified | 14 |
 | Matches played | 19 |
 | Points scored | 304 |
-| HTTP requests | 475 |
-| Duration | ~10s |
+| HTTP requests | 485 |
+| Duration | ~14s |
 
-Both scenarios reach a declared Champion. The backend is considered ready to
-serve Admin, Referee, and Spectator experiences.
+Both scenarios reach a declared Champion using only the public API. The backend
+is considered ready to serve Admin, Referee, and Spectator experiences.

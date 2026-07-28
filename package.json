@@ -14,6 +14,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
+    "test": "npm run test:drawing && npm run test:schedule && npm run test:match && npm run test:scoring && npm run test:standing && npm run test:playoff",
     "test:drawing": "ts-node --transpile-only src/drawing/engine/drawing-generator.spec.ts",
     "test:schedule": "ts-node --transpile-only src/schedule/engine/schedule-generator.spec.ts",
     "test:match": "ts-node --transpile-only src/match/match.lifecycle.spec.ts",

@@ -36,6 +36,12 @@ BE-SetPoint/
 └── package.json
 ```
 
+## Architecture overview
+
+New to the codebase? Start with `docs/21-system-architecture.md` — it maps the
+tournament chain, the lifecycle pattern shared by every engine, the readiness
+invariants, and the domain event flow in one place.
+
 ## Quick start
 
 ```bash
@@ -70,19 +76,16 @@ npm run prisma:seed
 
 ## Validation
 
-Engine unit checks (no server or database needed):
+Engine unit checks — pure functions, no server or database needed:
 
 ```bash
-npm run test:drawing
-npm run test:schedule
-npm run test:match
-npm run test:scoring
-npm run test:standing
-npm run test:playoff
+npm run test               # all engines
+npm run test:drawing       # or one at a time: schedule, match, scoring, standing, playoff
 ```
 
 Full tournament simulation over HTTP — Registration → Champion for both
-competition modes. Requires a running server and applied migrations:
+competition modes, using only the public API. Requires a running server and
+applied migrations:
 
 ```bash
 npm run simulate           # both scenarios
@@ -124,16 +127,16 @@ Done:
 - **Step 10C** — Playoff progression + Champion (auto on verify)
 - **Competition Mode** — `group_then_knockout` | `knockout_only` per Category
 - **Phase 0.5** — Full Tournament Simulation over HTTP for both modes (`npm run simulate`)
+- **Court Management** — CRUD + enable/disable/reorder (closes the last API gap)
 
 Domain engines through Playoff are complete for MVP group → knockout **and** direct cup,
 and both flows are validated end-to-end through the API — see `docs/20-api-validation-phase-0-5.md`.
 
 Next (optional polish):
 
-1. Court CRUD API (schedule generation needs courts; DB-only today)
-2. Standing Publish/Lock UX
-3. Court assignment for playoff matches
-4. Contested tie Admin resolution UI
+1. Standing Publish/Lock UX
+2. Court assignment for playoff matches
+3. Contested tie Admin resolution UI
 
 ## Tournament API
 
@@ -151,6 +154,27 @@ All routes require Bearer auth + `tournament:manage` permission.
 | POST | `/api/v1/tournaments/:id/go-live` | Published → Live |
 | POST | `/api/v1/tournaments/:id/finish` | Live → Finished |
 | POST | `/api/v1/tournaments/:id/archive` | Finished → Archived |
+
+## Court API
+
+Base: `/api/v1/tournaments/:tournamentId/courts` — auth `tournament:manage`.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | list in display order (+ optional `status`, `availableCount`) |
+| GET | `/:courtId` | detail |
+| POST | `/` | create; `label` unique per tournament (409 on duplicate) |
+| PATCH | `/:courtId` | update `name` / `label` / `displayOrder` / `availabilityNotes` |
+| POST | `/:courtId/enable` | back to `available`, clears notes |
+| POST | `/:courtId/disable` | `{ status?: unavailable\|maintenance, reason? }` |
+| POST | `/reorder` | `{ items: [{ courtId }] }` — full ordered list, position = `displayOrder` |
+| DELETE | `/:courtId` | soft delete when no Schedule/Match references it |
+
+- Mutations allowed while tournament is `draft` / `setup` / `published` / `live`;
+  blocked once `finished` or `archived` — disabling a court mid-event is an
+  operational need
+- A court occupied by a `warm_up` / `live` match cannot be disabled or deleted
+- Schedule generation consumes `available` courts in `displayOrder` (SCH-02)
 
 ## Category / Team / Player API
 

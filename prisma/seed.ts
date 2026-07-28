@@ -339,6 +339,7 @@ async function seed() {
         tournamentId: tournament.id,
         name: `Court ${index + 1}`,
         label,
+        displayOrder: index,
         status: CourtStatus.available,
       },
     });

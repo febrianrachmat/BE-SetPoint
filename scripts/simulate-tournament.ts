@@ -20,7 +20,6 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { PrismaClient } from '@prisma/client';
 
 const SCORING_TEMPLATE = 'one_set_4_gp_tb3';
 const MAX_POINTS_PER_MATCH = 200;
@@ -225,8 +224,6 @@ function truncate(value: string, max: number) {
 
 // --- domain helpers ---------------------------------------------------------
 
-const prisma = new PrismaClient();
-
 function categoryBase(ctx: Ctx) {
   return `/tournaments/${ctx.tournamentId}/categories/${ctx.categoryId}`;
 }
@@ -251,22 +248,91 @@ async function createTournament(name: string) {
   return tournament.id;
 }
 
-/**
- * Court has no HTTP surface yet, so the simulation provisions courts directly.
- * Tracked as a Phase 0.5 gap; every other step goes through the API.
- */
 async function provisionCourts(tournamentId: string, count: number) {
+  const created: string[] = [];
   for (let index = 0; index < count; index += 1) {
-    await prisma.court.create({
-      data: {
-        tournamentId,
+    const court = await api<{ id: string; displayOrder: number }>(
+      'POST',
+      `/tournaments/${tournamentId}/courts`,
+      {
         name: `Sim Court ${index + 1}`,
         label: `SC${index + 1}`,
-        status: 'available',
+        availabilityNotes: 'created by phase 0.5 simulation',
       },
-    });
+    );
+    created.push(court.id);
   }
-  note(`${count} court(s) provisioned via DB (no Court HTTP API)`);
+
+  await expectReject(
+    'duplicate court label',
+    'POST',
+    `/tournaments/${tournamentId}/courts`,
+    { name: 'Duplicate', label: 'sc1' },
+    [409],
+  );
+
+  const listed = await api<{ items: Array<{ id: string }>; availableCount: number }>(
+    'GET',
+    `/tournaments/${tournamentId}/courts`,
+  );
+  check(
+    `${count} courts created via API and available`,
+    listed.items.length === count && listed.availableCount === count,
+    `got ${listed.items.length} items / ${listed.availableCount} available`,
+  );
+
+  const reversed = [...created].reverse();
+  const reordered = await api<{ items: Array<{ id: string; displayOrder: number }> }>(
+    'POST',
+    `/tournaments/${tournamentId}/courts/reorder`,
+    { items: reversed.map((courtId) => ({ courtId })) },
+  );
+  check(
+    'reorder applies contiguous displayOrder in listed sequence',
+    reordered.items.every(
+      (court, index) =>
+        court.id === reversed[index] && court.displayOrder === index,
+    ),
+  );
+
+  await expectReject(
+    'reorder with a partial court list',
+    'POST',
+    `/tournaments/${tournamentId}/courts/reorder`,
+    { items: [{ courtId: created[0] }] },
+  );
+
+  return created;
+}
+
+/** Court availability is an operational lever: it must work while Live. */
+async function exerciseCourtAvailability(tournamentId: string, courtId: string) {
+  const base = `/tournaments/${tournamentId}/courts/${courtId}`;
+
+  const disabled = await api<{ status: string; availabilityNotes: string | null }>(
+    'POST',
+    `${base}/disable`,
+    { status: 'maintenance', reason: 'net replacement' },
+  );
+  check(
+    'court can be put into maintenance with a reason',
+    disabled.status === 'maintenance' &&
+      disabled.availabilityNotes === 'net replacement',
+  );
+
+  await expectReject('disable an already disabled court', 'POST', `${base}/disable`, {
+    status: 'maintenance',
+  });
+  await expectReject('delete a court referenced by a Schedule', 'DELETE', base);
+
+  const enabled = await api<{ status: string; availabilityNotes: string | null }>(
+    'POST',
+    `${base}/enable`,
+  );
+  check(
+    'court returns to the available pool and notes are cleared',
+    enabled.status === 'available' && enabled.availabilityNotes === null,
+  );
 }
 
 async function createCategory(
@@ -509,9 +575,9 @@ async function scenarioGroupThenKnockout() {
   const stamp = Date.now();
   section('Scenario A — group_then_knockout (2 groups x 4 teams, qualifyTop 2)');
 
-  step('Tournament + Category + Teams');
+  step('Tournament + Courts + Category + Teams');
   const tournamentId = await createTournament(`SIM Group ${stamp}`);
-  await provisionCourts(tournamentId, 2);
+  const courtIds = await provisionCourts(tournamentId, 2);
   await api('POST', `/tournaments/${tournamentId}/setup`);
 
   const categoryId = await createCategory(tournamentId, {
@@ -630,6 +696,10 @@ async function scenarioGroupThenKnockout() {
   );
   check('tournament live', live.status === 'live');
 
+  step('Court availability while Live');
+  await exerciseCourtAvailability(tournamentId, courtIds[0]);
+
+  step('Play group stage');
   for (const [index, match] of groupMatches.entries()) {
     await playMatch(ctx, match.id, { probeGates: index === 0 });
   }
@@ -926,7 +996,4 @@ main()
       console.error(error);
     }
     process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
   });
