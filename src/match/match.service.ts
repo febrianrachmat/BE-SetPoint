@@ -243,6 +243,7 @@ export class MatchService {
       A: null,
       B: null,
     };
+    let groupId: string | null = null;
 
     return this.transition({
       tournamentId,
@@ -279,6 +280,7 @@ export class MatchService {
           );
         }
 
+        groupId = ctx.match.groupId;
         sideTeams = {
           A:
             ctx.match.participations.find((p) => p.sideLabel === 'A')?.teamId ??
@@ -289,6 +291,7 @@ export class MatchService {
         };
       },
       eventPayload: () => ({
+        groupId,
         result: extractedResult,
         sides: sideTeams,
         // Standing Engine (Step 9) consumes this event; MatchService does not update standings.

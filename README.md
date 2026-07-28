@@ -92,10 +92,12 @@ Done:
 - **Step 8A** — Match Lifecycle (waiting → warm_up → live → finished → verified)
 - **Step 8B** — Scoring Engine (pure padel point/game/set; finish gated on completed score)
 - **Step 8C** — Match Verification (gates + `getMatchResult` + `match.verified` for Standing)
+- **Step 9A** — Standing Engine (group W-L-P + rank from Verified; auto on `match.verified`)
+- **Step 9B** — Tie-break policy pipeline (`tieBreakOrder`, H2H mini-table; no silent random)
 
 Next:
 
-1. Step 9 — Standing Engine (consume Verified results only)
+1. Step 9C — Qualification (`qualifyTop` → `qualificationStatus`)
 2. Step 10 — Playoff Engine
 
 ## Tournament API
@@ -238,9 +240,26 @@ Requires **Live Ready** Schedule. Only Official schedule version matches.
 Invariants:
 - One occupying Match per Court (`warm_up` / `live`)
 - Scoring config from `Category.configuration.scoring` (template + overrides); snapshot at `start`
-- Verify extracts `getMatchResult` into event payload (`result` + `sides`) — **does not** update Standings
-- Standing recalc is Step 9 (consumer of `match.verified` / Verified matches)
+- Verify extracts `getMatchResult` into event payload (`result` + `sides` + `groupId`) — **does not** write Standings
+- Standing module consumes `match.verified` (in-process) and recalculates the group
 - Unit: `npm run test:match`, `npm run test:scoring`
+
+## Standing API (Step 9A)
+
+Base: `/api/v1/tournaments/:tournamentId/categories/:categoryId/standings`
+
+Auth: `tournament:manage`
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | List (+ optional `groupId`) |
+| POST | `/recalculate` | Body `{ "groupId?" }` — Verified matches only |
+
+- Criteria: `Category.configuration.standings` (`pointsForWin` / `pointsForLoss` / `tieBreakOrder`)
+- Default tie-break: points → wins → head_to_head → set diff → game diff
+- `random_draw` in order marks `random_draw_pending` (Admin); never auto-shuffles
+- Qualification / Publish / Lock polish deferred (9C+)
+- Unit: `npm run test:standing`
 
 ## Auth
 

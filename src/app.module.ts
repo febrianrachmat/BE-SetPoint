@@ -9,6 +9,7 @@ import { CategoryModule } from './category/category.module';
 import { DrawingModule } from './drawing/drawing.module';
 import { MatchModule } from './match/match.module';
 import { ScheduleModule } from './schedule/schedule.module';
+import { StandingModule } from './standing/standing.module';
 import { TournamentModule } from './tournament/tournament.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { TournamentModule } from './tournament/tournament.module';
     DrawingModule,
     ScheduleModule,
     MatchModule,
+    StandingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

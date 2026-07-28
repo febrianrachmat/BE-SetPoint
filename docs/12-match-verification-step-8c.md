@@ -72,6 +72,7 @@ Team IDs are attached at Nest boundary from `MatchParticipation.sideLabel`.
 - standard match transition fields (`matchId`, statuses, `scheduleVersionId`, `actorId`, …)
 - `result` — output of `getMatchResult`
 - `sides` — `{ A: teamId | null, B: teamId | null }`
+- `groupId` — group-stage context for Standing auto-recalc
 
 Standing Engine (Step 9) listens / polls this contract. Event publisher may still be log-only stub.
 

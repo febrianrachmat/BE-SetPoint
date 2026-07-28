@@ -279,6 +279,17 @@ async function seed() {
             tieBreak: { atGames: 5, pointsTo: 7, mustWinBy: 2 },
             matchTieBreak: { atGames: 0, pointsTo: 10, mustWinBy: 2 },
           },
+          standings: {
+            pointsForWin: 1,
+            pointsForLoss: 0,
+            tieBreakOrder: [
+              'points',
+              'wins',
+              'head_to_head',
+              'set_difference',
+              'game_difference',
+            ],
+          },
         },
       },
     });
