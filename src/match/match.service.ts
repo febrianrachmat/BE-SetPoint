@@ -19,6 +19,7 @@ import { MatchRepository } from './match.repository';
 import {
   applyPoint,
   createInitialState,
+  getMatchResult,
   isMatchComplete,
   PADEL_SCORING_ENGINE_VERSION,
   resolveScoringConfig,
@@ -236,7 +237,13 @@ export class MatchService {
     matchId: string,
     user: AuthUserView,
   ) {
-    // 8A/8C-lite: Verify officializes result. Standing recalc is Step 9.
+    // 8C: officialize result + emit Standing-ready event. No Standing recalc here.
+    let extractedResult: ReturnType<typeof getMatchResult> | null = null;
+    let sideTeams: { A: string | null; B: string | null } = {
+      A: null,
+      B: null,
+    };
+
     return this.transition({
       tournamentId,
       categoryId,
@@ -244,14 +251,48 @@ export class MatchService {
       user,
       target: MatchStatus.verified,
       eventName: MatchEvents.Verified,
-      before: async () => {
-        // MVP: only Tournament Admin / Super Admin may verify (MATCH-10 / REF-03).
+      before: async (ctx) => {
         if (!this.matches.isAdminOperator(user.roles)) {
           throw new ForbiddenException(
             'Only Tournament Admin may Verify matches in MVP (MATCH-10)',
           );
         }
+
+        if (!this.matches.isTournamentLive(ctx.tournament.status)) {
+          throw new BadRequestException(
+            'Verify requires Tournament status Live (8C)',
+          );
+        }
+
+        const state = this.readScoreState(ctx.match.scoreRepresentation);
+        if (!state || !isMatchComplete(state)) {
+          throw new BadRequestException(
+            'Verify requires completed scoring state (8C)',
+          );
+        }
+
+        try {
+          extractedResult = getMatchResult(state);
+        } catch (err) {
+          throw new BadRequestException(
+            err instanceof Error ? err.message : 'Unable to extract match result',
+          );
+        }
+
+        sideTeams = {
+          A:
+            ctx.match.participations.find((p) => p.sideLabel === 'A')?.teamId ??
+            null,
+          B:
+            ctx.match.participations.find((p) => p.sideLabel === 'B')?.teamId ??
+            null,
+        };
       },
+      eventPayload: () => ({
+        result: extractedResult,
+        sides: sideTeams,
+        // Standing Engine (Step 9) consumes this event; MatchService does not update standings.
+      }),
     });
   }
 
@@ -303,6 +344,7 @@ export class MatchService {
       resultStatus?: ResultStatus;
       scoreRepresentation?: Prisma.InputJsonValue | typeof Prisma.JsonNull;
     };
+    eventPayload?: () => Record<string, unknown>;
   }) {
     const { tournament, category } = await this.requireCategory(
       params.tournamentId,
@@ -351,6 +393,7 @@ export class MatchService {
         courtId: match.courtId,
         scheduleVersionId: match.scheduleVersionId,
         actorId: params.user.id,
+        ...(params.eventPayload?.() ?? {}),
       },
     });
 

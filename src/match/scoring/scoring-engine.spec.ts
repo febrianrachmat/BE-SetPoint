@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   applyPoint,
   createInitialState,
+  getMatchResult,
   isMatchComplete,
 } from './scoring-engine';
 import { resolveScoringConfig } from './scoring.config';
@@ -178,6 +179,24 @@ function winGames(state: ScoreState, side: Side, count: number): ScoreState {
   for (let i = 0; i < 7; i += 1) s = applyPoint(s, 'B');
   assert.equal(s.setsWon.B, 1);
   assert.equal(s.phase, 'in_progress');
+}
+
+// --- getMatchResult from completed Bo3 ---
+{
+  let s = createInitialState(cfg('best_of_3_gp_full'));
+  s = winGames(s, 'A', 6);
+  s = winGames(s, 'B', 6);
+  s = winGames(s, 'A', 6);
+  const result = getMatchResult(s);
+  assert.equal(result.winnerSide, 'A');
+  assert.equal(result.loserSide, 'B');
+  assert.deepEqual(result.setsWon, { A: 2, B: 1 });
+  assert.deepEqual(result.sets, [
+    [6, 0],
+    [0, 6],
+    [6, 0],
+  ]);
+  assert.throws(() => getMatchResult(createInitialState(cfg('one_set_6_gp_tb5'))));
 }
 
 console.log('scoring-engine.spec: all assertions passed');

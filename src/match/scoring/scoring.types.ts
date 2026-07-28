@@ -47,3 +47,15 @@ export type ScoreState = {
   winnerSide: Side | null;
   serverSide: Side | null;
 };
+
+/**
+ * Side-based official result extracted from a completed ScoreState.
+ * Team identity is resolved by consumers via MatchParticipation.sideLabel.
+ */
+export type MatchResult = {
+  winnerSide: Side;
+  loserSide: Side;
+  setsWon: { A: number; B: number };
+  /** Completed sets as [gamesA, gamesB], in play order */
+  sets: Array<[number, number]>;
+};

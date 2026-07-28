@@ -114,7 +114,7 @@ export class MatchController {
   @Post(':matchId/verify')
   @ApiOperation({
     summary:
-      'finished → verified (MATCH-10). Standing recalculation is Step 9.',
+      'finished → verified (8C). Admin only; emits match.verified with result for Standing consumer. No standing update here.',
   })
   verify(
     @Param('tournamentId', ParseUUIDPipe) tournamentId: string,

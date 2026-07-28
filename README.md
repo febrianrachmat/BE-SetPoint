@@ -91,11 +91,12 @@ Done:
 - **Step 7C** — Schedule Lock (+ Live Ready gate for Step 8)
 - **Step 8A** — Match Lifecycle (waiting → warm_up → live → finished → verified)
 - **Step 8B** — Scoring Engine (pure padel point/game/set; finish gated on completed score)
+- **Step 8C** — Match Verification (gates + `getMatchResult` + `match.verified` for Standing)
 
 Next:
 
-1. Step 8C+ — Harden verification / events
-2. Step 9 — Standing Engine (on Verified) → Playoff
+1. Step 9 — Standing Engine (consume Verified results only)
+2. Step 10 — Playoff Engine
 
 ## Tournament API
 
@@ -215,11 +216,12 @@ Flow: **Generate → Review(approve) → Publish(official) → Lock**.
 - **Live Ready** (for Step 8): Schedule Published ∧ Locked — `ScheduleService.assertLiveReady()`
 - Unit: `npm run test:schedule`
 
-## Match API (Step 8A / 8B)
+## Match API (Step 8A / 8B / 8C)
 
 Base: `/api/v1/tournaments/:tournamentId/categories/:categoryId/matches`
 
-Auth: `match:score` (tournament_admin + referee; referee only on assigned matches).
+Auth: `match:score` (tournament_admin + referee; referee only on assigned matches).  
+**Verify** is Admin-only in MVP.
 
 Requires **Live Ready** Schedule. Only Official schedule version matches.
 
@@ -231,12 +233,13 @@ Requires **Live Ready** Schedule. Only Official schedule version matches.
 | POST | `/:matchId/start` | warm_up → live (snapshots scoring config) |
 | POST | `/:matchId/score/point` | apply point `{ "side": "A"\|"B" }` while live |
 | POST | `/:matchId/finish` | live → finished (requires completed score) |
-| POST | `/:matchId/verify` | finished → verified (Admin only in MVP) |
+| POST | `/:matchId/verify` | finished → verified (Admin; Tournament Live; emits `match.verified`) |
 
 Invariants:
 - One occupying Match per Court (`warm_up` / `live`)
 - Scoring config from `Category.configuration.scoring` (template + overrides); snapshot at `start`
-- Finished ≠ Standing update; Verified emits event but Standing recalc is Step 9
+- Verify extracts `getMatchResult` into event payload (`result` + `sides`) — **does not** update Standings
+- Standing recalc is Step 9 (consumer of `match.verified` / Verified matches)
 - Unit: `npm run test:match`, `npm run test:scoring`
 
 ## Auth

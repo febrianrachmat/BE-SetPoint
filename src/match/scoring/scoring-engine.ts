@@ -1,6 +1,7 @@
 import {
   PADEL_SCORING_ENGINE_VERSION,
   GameState,
+  MatchResult,
   ScoreState,
   ScoringConfig,
   SetState,
@@ -304,6 +305,29 @@ export function isMatchComplete(state: ScoreState): boolean {
 
 export function getWinnerSide(state: ScoreState): Side | null {
   return state.winnerSide;
+}
+
+/**
+ * Extract a Standing-ready result from completed score state.
+ * Throws if the match is not complete.
+ */
+export function getMatchResult(state: ScoreState): MatchResult {
+  if (!isMatchComplete(state) || !state.winnerSide) {
+    throw new Error('Match is not completed');
+  }
+
+  const winnerSide = state.winnerSide;
+  const loserSide = opposite(winnerSide);
+  const sets: Array<[number, number]> = state.sets
+    .filter((set) => set.winnerSide !== null)
+    .map((set) => [set.gamesA, set.gamesB]);
+
+  return {
+    winnerSide,
+    loserSide,
+    setsWon: { ...state.setsWon },
+    sets,
+  };
 }
 
 /** Display helper: map internal points 0..3+ to padel labels */
