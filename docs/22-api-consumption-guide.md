@@ -25,6 +25,9 @@ Referee, or Spectator UIs — or when integrating any HTTP client.
 
 Base URL (local): `http://localhost:3000/api/v1`
 
+CORS for the Organizer app defaults to `http://localhost:3001` (env
+`CORS_ORIGINS`, comma-separated).
+
 ---
 
 ## 1. Conventions every request shares

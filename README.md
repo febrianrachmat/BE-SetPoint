@@ -57,6 +57,7 @@ npm run start:dev
 
 - Health: `GET http://localhost:3000/api/v1/health`
 - Swagger: `http://localhost:3000/docs`
+- CORS: allows `http://localhost:3001` by default (override with `CORS_ORIGINS`)
 
 ## API foundation
 

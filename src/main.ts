@@ -13,6 +13,17 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
   app.use(requestIdMiddleware);
 
+  app.enableCors({
+    origin: (
+      process.env.CORS_ORIGINS ??
+      'http://localhost:3001,http://127.0.0.1:3001'
+    )
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+    credentials: true,
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
