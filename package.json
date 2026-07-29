@@ -14,13 +14,14 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
-    "test": "npm run test:drawing && npm run test:schedule && npm run test:match && npm run test:scoring && npm run test:standing && npm run test:playoff",
+    "test": "npm run test:drawing && npm run test:schedule && npm run test:match && npm run test:scoring && npm run test:standing && npm run test:playoff && npm run test:prisma-errors",
     "test:drawing": "ts-node --transpile-only src/drawing/engine/drawing-generator.spec.ts",
     "test:schedule": "ts-node --transpile-only src/schedule/engine/schedule-generator.spec.ts",
     "test:match": "ts-node --transpile-only src/match/match.lifecycle.spec.ts",
     "test:scoring": "ts-node --transpile-only src/match/scoring/scoring-engine.spec.ts",
     "test:standing": "ts-node --transpile-only src/standing/engine/standing-calculator.spec.ts",
     "test:playoff": "ts-node --transpile-only src/playoff/engine/playoff-bracket-generator.spec.ts",
+    "test:prisma-errors": "ts-node --transpile-only src/common/filters/prisma-exception.mapper.spec.ts",
     "simulate": "ts-node --transpile-only scripts/simulate-tournament.ts"
   },
   "prisma": {

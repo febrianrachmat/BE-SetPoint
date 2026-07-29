@@ -42,6 +42,9 @@ New to the codebase? Start with `docs/21-system-architecture.md` — it maps the
 tournament chain, the lifecycle pattern shared by every engine, the readiness
 invariants, and the domain event flow in one place.
 
+Building a client? Use `docs/22-api-consumption-guide.md` — auth, call order,
+envelopes, domain endpoints, and error codes (including Prisma mapping).
+
 ## Quick start
 
 ```bash
@@ -79,8 +82,8 @@ npm run prisma:seed
 Engine unit checks — pure functions, no server or database needed:
 
 ```bash
-npm run test               # all engines
-npm run test:drawing       # or one at a time: schedule, match, scoring, standing, playoff
+npm run test               # all engines + Prisma error mapper
+npm run test:drawing       # or one at a time: schedule, match, scoring, standing, playoff, prisma-errors
 ```
 
 Full tournament simulation over HTTP — Registration → Champion for both

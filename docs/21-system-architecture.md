@@ -14,7 +14,8 @@
 
 This is the orientation map for the backend. It explains **how the pieces fit
 together**, not how each one is implemented. Detailed specifications live in
-`docs/00`–`20`; this document points at them.
+`docs/00`–`20`; the client-facing HTTP guide is `docs/22-api-consumption-guide.md`.
+This document points at them.
 
 If you have 15 minutes, read sections 2, 3, 4, and 5. Those four cover the
 tournament chain, the lifecycle pattern every engine repeats, the readiness
@@ -337,7 +338,6 @@ See `docs/20-api-validation-phase-0-5.md`.
 
 | Gap | Impact |
 | --- | --- |
-| Prisma errors surface as bare 500s | Constraint violations need server logs to diagnose |
 | Standing publish/lock not exposed | Standings have the columns but no lifecycle endpoints |
 | Playoff matches have no court assignment | Acceptable for MVP, visible in an ops UI |
 | `random_draw` tie-break is manual | Marks `random_draw_pending`; never auto-shuffles by design |
@@ -350,6 +350,7 @@ See `docs/20-api-validation-phase-0-5.md`.
 | Question | File |
 | --- | --- |
 | Bootstrap, envelope, Swagger | `src/main.ts` |
+| Prisma → HTTP error mapping | `src/common/filters/prisma-exception.mapper.ts` |
 | Event contract | `src/common/events/domain-event.publisher.ts` |
 | Tournament lifecycle rules | `src/tournament/tournament.lifecycle.ts` |
 | Court availability rules | `src/court/court.rules.ts` |
@@ -375,4 +376,5 @@ See `docs/20-api-validation-phase-0-5.md`.
 | `16`–`18` | Playoff bracket, versioning, progression (10A–10C) |
 | `19` | Competition mode |
 | `20` | Phase 0.5 API validation |
-| `21` | This document |
+| `21` | System architecture (for humans) |
+| `22` | API consumption guide (for FE / clients) |

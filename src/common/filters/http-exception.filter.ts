@@ -9,6 +9,10 @@ import {
 import { Response } from 'express';
 import { ApiErrorResponse } from '../interfaces/api-response.interface';
 import { RequestWithId } from '../middleware/request-id.middleware';
+import {
+  mapPrismaException,
+  NormalizedException,
+} from './prisma-exception.mapper';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -46,12 +50,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(statusCode).json(body);
   }
 
-  private normalize(exception: unknown): {
-    statusCode: number;
-    code: string;
-    message: string;
-    details?: string[];
-  } {
+  private normalize(exception: unknown): NormalizedException {
     if (exception instanceof HttpException) {
       const statusCode = exception.getStatus();
       const exceptionResponse = exception.getResponse();
@@ -74,6 +73,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
 
       return { statusCode, code, message: extracted };
+    }
+
+    const prismaMapped = mapPrismaException(exception);
+    if (prismaMapped) {
+      return prismaMapped;
     }
 
     return {
