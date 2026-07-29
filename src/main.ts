@@ -52,7 +52,11 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = Number(process.env.PORT ?? 3000);
-  await app.listen(port);
+  // Bind all interfaces so Kubernetes probes / ingress can reach the process.
+  await app.listen(port, '0.0.0.0');
 }
 
-void bootstrap();
+void bootstrap().catch((error: unknown) => {
+  console.error('Fatal bootstrap error', error);
+  process.exit(1);
+});
