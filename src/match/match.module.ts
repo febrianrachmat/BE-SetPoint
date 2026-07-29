@@ -5,10 +5,11 @@ import { ScheduleModule } from '../schedule/schedule.module';
 import { MatchController } from './match.controller';
 import { MatchRepository } from './match.repository';
 import { MatchService } from './match.service';
+import { RefereeController } from './referee.controller';
 
 @Module({
   imports: [AuthModule, ScheduleModule, PlayoffModule],
-  controllers: [MatchController],
+  controllers: [MatchController, RefereeController],
   providers: [MatchService, MatchRepository],
   exports: [MatchService],
 })

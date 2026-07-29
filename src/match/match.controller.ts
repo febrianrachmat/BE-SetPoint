@@ -20,6 +20,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Permission } from '../auth/permissions/permissions';
 import { AuthUserView } from '../auth/types/auth-user.type';
 import { ListMatchesQueryDto } from './dto/list-matches.query.dto';
+import { AssignRefereeDto } from './dto/assign-referee.dto';
 import { ScorePointDto } from './dto/score-point.dto';
 import { MatchService } from './match.service';
 
@@ -52,6 +53,27 @@ export class MatchController {
     @Param('matchId', ParseUUIDPipe) matchId: string,
   ) {
     return this.matchService.getById(tournamentId, categoryId, matchId);
+  }
+
+  @Post(':matchId/referees')
+  @RequirePermissions(Permission.TOURNAMENT_MANAGE)
+  @ApiOperation({
+    summary: 'Assign a referee user to this match by email (Admin)',
+  })
+  assignReferee(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Body() dto: AssignRefereeDto,
+    @CurrentUser() user: AuthUserView,
+  ) {
+    return this.matchService.assignReferee(
+      tournamentId,
+      categoryId,
+      matchId,
+      dto.email,
+      user,
+    );
   }
 
   @Post(':matchId/warm-up')

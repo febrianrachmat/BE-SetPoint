@@ -83,6 +83,74 @@ export class MatchRepository {
     });
   }
 
+  findUserByEmail(email: string) {
+    return this.prisma.user.findFirst({
+      where: { email: email.toLowerCase(), deletedAt: null, isActive: true },
+      include: {
+        roleAssignments: {
+          select: { role: true, tournamentId: true },
+        },
+      },
+    });
+  }
+
+  assignReferee(params: {
+    matchId: string;
+    refereeId: string;
+    assignedBy?: string;
+  }) {
+    return this.prisma.refereeAssignment.create({
+      data: {
+        matchId: params.matchId,
+        refereeId: params.refereeId,
+        assignedBy: params.assignedBy,
+        assignmentStatus: AssignmentStatus.active,
+      },
+      select: {
+        id: true,
+        matchId: true,
+        refereeId: true,
+        assignedAt: true,
+        assignmentStatus: true,
+      },
+    });
+  }
+
+  listActiveAssignmentsForReferee(refereeId: string) {
+    return this.prisma.refereeAssignment.findMany({
+      where: {
+        refereeId,
+        assignmentStatus: AssignmentStatus.active,
+        unassignedAt: null,
+      },
+      orderBy: { assignedAt: 'desc' },
+      include: {
+        match: {
+          select: {
+            id: true,
+            status: true,
+            bracketPosition: true,
+            categoryId: true,
+            scheduledStartAt: true,
+            category: {
+              select: {
+                id: true,
+                name: true,
+                tournamentId: true,
+                tournament: { select: { id: true, name: true, status: true } },
+              },
+            },
+            court: { select: { id: true, name: true, label: true } },
+            participations: {
+              orderBy: { sideLabel: 'asc' },
+              include: { team: { select: { id: true, name: true } } },
+            },
+          },
+        },
+      },
+    });
+  }
+
   transitionStatus(params: {
     matchId: string;
     status: MatchStatus;

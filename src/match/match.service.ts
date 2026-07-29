@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { MatchStatus, Prisma, ResultStatus } from '@prisma/client';
+import { MatchStatus, Prisma, ResultStatus, UserRole } from '@prisma/client';
 import { AuthUserView } from '../auth/types/auth-user.type';
 import {
   DOMAIN_EVENT_PUBLISHER,
@@ -404,6 +404,70 @@ export class MatchService {
     });
 
     return updated;
+  }
+
+  async assignReferee(
+    tournamentId: string,
+    categoryId: string,
+    matchId: string,
+    email: string,
+    user: AuthUserView,
+  ) {
+    await this.requireCategory(tournamentId, categoryId);
+    const match = await this.matches.findMatchInCategory(categoryId, matchId);
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+
+    const referee = await this.matches.findUserByEmail(email.trim());
+    if (!referee) {
+      throw new NotFoundException('Referee user not found');
+    }
+
+    const isReferee = referee.roleAssignments.some(
+      (assignment) => assignment.role === UserRole.referee,
+    );
+    if (!isReferee) {
+      throw new BadRequestException('User does not have referee role');
+    }
+
+    const existing = await this.matches.findActiveRefereeAssignment(
+      matchId,
+      referee.id,
+    );
+    if (existing) {
+      return existing;
+    }
+
+    return this.matches.assignReferee({
+      matchId,
+      refereeId: referee.id,
+      assignedBy: user.id,
+    });
+  }
+
+  async listMyAssignments(user: AuthUserView) {
+    const items = await this.matches.listActiveAssignmentsForReferee(user.id);
+    return {
+      items: items.map((row) => ({
+        id: row.id,
+        assignedAt: row.assignedAt,
+        assignmentStatus: row.assignmentStatus,
+        match: {
+          id: row.match.id,
+          status: row.match.status,
+          bracketPosition: row.match.bracketPosition,
+          scheduledStartAt: row.match.scheduledStartAt,
+          tournamentId: row.match.category.tournamentId,
+          tournamentName: row.match.category.tournament.name,
+          tournamentStatus: row.match.category.tournament.status,
+          categoryId: row.match.categoryId,
+          categoryName: row.match.category.name,
+          court: row.match.court,
+          participations: row.match.participations,
+        },
+      })),
+    };
   }
 
   private async assertCourtAvailable(match: {
