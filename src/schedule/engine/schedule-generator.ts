@@ -1,8 +1,16 @@
-import { DEFAULT_MATCH_DURATION_MINUTES } from './schedule-engine.constants';
+import {
+  DEFAULT_MATCH_DURATION_MINUTES,
+  DEFAULT_REST_BUFFER_MINUTES,
+  DEFAULT_SCHEDULE_STRATEGY,
+  ScheduleStrategy,
+  SCHEDULE_STRATEGY_GROUP_BLOCK,
+  SCHEDULE_STRATEGY_ROUND_WAVE,
+} from './schedule-engine.constants';
 import { generateRoundRobinPairs } from './round-robin';
 import {
   AssignedMatch,
-  assignCourtsAndTimes,
+  assignCourtsAndTimesGroupBlock,
+  assignCourtsAndTimesRoundWave,
   CourtInput,
 } from './schedule-assigner';
 
@@ -16,11 +24,15 @@ export type GenerateSchedulePlanInput = {
   courts: CourtInput[];
   startAt: Date;
   matchDurationMinutes?: number;
+  restBufferMinutes?: number;
+  strategy?: ScheduleStrategy;
 };
 
 export type GenerateSchedulePlanResult = {
   matches: AssignedMatch[];
   matchDurationMinutes: number;
+  restBufferMinutes: number;
+  strategy: ScheduleStrategy;
   conflictStatus: 'clear';
 };
 
@@ -60,17 +72,37 @@ export function generateSchedulePlan(
 
   const matchDurationMinutes =
     input.matchDurationMinutes ?? DEFAULT_MATCH_DURATION_MINUTES;
+  const restBufferMinutes =
+    input.restBufferMinutes ?? DEFAULT_REST_BUFFER_MINUTES;
+  const strategy = input.strategy ?? DEFAULT_SCHEDULE_STRATEGY;
 
-  const matches = assignCourtsAndTimes({
+  if (
+    strategy !== SCHEDULE_STRATEGY_GROUP_BLOCK &&
+    strategy !== SCHEDULE_STRATEGY_ROUND_WAVE
+  ) {
+    throw new Error(
+      `Unknown schedule strategy '${String(strategy)}'`,
+    );
+  }
+
+  const assignInput = {
     matches: planned,
     courts: input.courts,
     startAt: input.startAt,
     matchDurationMinutes,
-  });
+    restBufferMinutes,
+  };
+
+  const matches =
+    strategy === SCHEDULE_STRATEGY_GROUP_BLOCK
+      ? assignCourtsAndTimesGroupBlock(assignInput)
+      : assignCourtsAndTimesRoundWave(assignInput);
 
   return {
     matches,
     matchDurationMinutes,
+    restBufferMinutes,
+    strategy,
     conflictStatus: 'clear',
   };
 }

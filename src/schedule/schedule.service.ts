@@ -137,11 +137,38 @@ export class ScheduleService {
       );
     }
 
-    const courts = await this.schedules.findAvailableCourts(tournamentId);
-    if (courts.length < 1) {
+    const availableCourts =
+      await this.schedules.findAvailableCourts(tournamentId);
+    if (availableCourts.length < 1) {
       throw new BadRequestException(
         'At least one available Court is required (SCH-02)',
       );
+    }
+
+    let courts = availableCourts;
+    if (dto.courtIds && dto.courtIds.length > 0) {
+      const allowed = new Set(dto.courtIds);
+      courts = availableCourts.filter((court) => allowed.has(court.id));
+      if (courts.length < 1) {
+        throw new BadRequestException(
+          'None of the selected courts are available for this tournament',
+        );
+      }
+      const missing = dto.courtIds.filter(
+        (id) => !availableCourts.some((court) => court.id === id),
+      );
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Unknown or unavailable court id(s): ${missing.join(', ')}`,
+        );
+      }
+      // Preserve admin selection order for stable group→court mapping
+      const byId = new Map(courts.map((court) => [court.id, court]));
+      courts = dto.courtIds
+        .map((id) => byId.get(id))
+        .filter((court): court is (typeof availableCourts)[number] =>
+          Boolean(court),
+        );
     }
 
     const groups = await this.schedules.findOfficialDrawingGroups(
@@ -181,6 +208,8 @@ export class ScheduleService {
         courts: courts.map((court) => ({ id: court.id })),
         startAt,
         matchDurationMinutes: dto.matchDurationMinutes,
+        restBufferMinutes: dto.restBufferMinutes,
+        strategy: dto.strategy,
       });
     } catch (error) {
       throw new BadRequestException(
@@ -210,7 +239,10 @@ export class ScheduleService {
         drawingVersionId: drawing.currentOfficialVersionId,
         matchCount: plan.matches.length,
         courtCount: courts.length,
+        courtIds: courts.map((court) => court.id),
         matchDurationMinutes: plan.matchDurationMinutes,
+        restBufferMinutes: plan.restBufferMinutes,
+        strategy: plan.strategy,
         conflictStatus: plan.conflictStatus,
         actorId: user.id,
       },
