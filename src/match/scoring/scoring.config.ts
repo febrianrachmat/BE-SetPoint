@@ -55,6 +55,10 @@ export function validateScoringConfig(input: ScoringConfig): ScoringConfig {
   if (input.tieBreak.atGames < 0 || input.matchTieBreak.pointsTo < 1) {
     throw new Error('Invalid tieBreak configuration');
   }
+  // Classic TB at 6–6 uses atGames === gamesTo; fast-to-6 TB at 5–5 uses atGames < gamesTo.
+  if (input.tieBreak.atGames > input.gamesTo) {
+    throw new Error('tieBreak.atGames must be less than or equal to gamesTo');
+  }
   return input;
 }
 
