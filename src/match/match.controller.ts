@@ -21,6 +21,7 @@ import { Permission } from '../auth/permissions/permissions';
 import { AuthUserView } from '../auth/types/auth-user.type';
 import { ListMatchesQueryDto } from './dto/list-matches.query.dto';
 import { AssignRefereeDto } from './dto/assign-referee.dto';
+import { ScoreDeltaDto, ScoreSideDto } from './dto/score-adjust.dto';
 import { ScorePointDto } from './dto/score-point.dto';
 import { MatchService } from './match.service';
 
@@ -115,6 +116,107 @@ export class MatchController {
       categoryId,
       matchId,
       dto.side,
+      user,
+    );
+  }
+
+  @Post(':matchId/score/point/remove')
+  @ApiOperation({
+    summary:
+      'Remove one point from the current game/tie-break for a side (referee correction)',
+  })
+  removeScorePoint(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Body() dto: ScoreSideDto,
+    @CurrentUser() user: AuthUserView,
+  ) {
+    return this.matchService.removeScorePoint(
+      tournamentId,
+      categoryId,
+      matchId,
+      dto.side,
+      user,
+    );
+  }
+
+  @Post(':matchId/score/game')
+  @ApiOperation({
+    summary: 'Manually add or remove one game for a side. Body: { side, delta: 1|-1 }',
+  })
+  adjustScoreGame(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Body() dto: ScoreDeltaDto,
+    @CurrentUser() user: AuthUserView,
+  ) {
+    return this.matchService.adjustScoreGame(
+      tournamentId,
+      categoryId,
+      matchId,
+      dto.side,
+      dto.delta,
+      user,
+    );
+  }
+
+  @Post(':matchId/score/set')
+  @ApiOperation({
+    summary: 'Manually add or remove one set for a side. Body: { side, delta: 1|-1 }',
+  })
+  adjustScoreSet(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Body() dto: ScoreDeltaDto,
+    @CurrentUser() user: AuthUserView,
+  ) {
+    return this.matchService.adjustScoreSet(
+      tournamentId,
+      categoryId,
+      matchId,
+      dto.side,
+      dto.delta,
+      user,
+    );
+  }
+
+  @Post(':matchId/score/server')
+  @ApiOperation({
+    summary: 'Set which side is serving. Body: { side: A|B }',
+  })
+  setScoreServer(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Body() dto: ScoreSideDto,
+    @CurrentUser() user: AuthUserView,
+  ) {
+    return this.matchService.setScoreServer(
+      tournamentId,
+      categoryId,
+      matchId,
+      dto.side,
+      user,
+    );
+  }
+
+  @Post(':matchId/score/undo')
+  @ApiOperation({
+    summary: 'Undo the last scoring action while Match is live',
+  })
+  undoScore(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @CurrentUser() user: AuthUserView,
+  ) {
+    return this.matchService.undoScore(
+      tournamentId,
+      categoryId,
+      matchId,
       user,
     );
   }

@@ -18,15 +18,22 @@ import { MatchEvents } from './match.events';
 import { getNextMatchStatus } from './match.lifecycle';
 import { MatchRepository } from './match.repository';
 import {
+  adjustGame,
+  adjustSet,
   applyPoint,
   createInitialState,
   getMatchResult,
   isMatchComplete,
   PADEL_SCORING_ENGINE_VERSION,
+  removePoint,
   resolveScoringConfig,
   ScoreState,
+  setServerSide,
   Side,
+  stripUndoStack,
 } from './scoring';
+
+const MAX_UNDO_STACK = 40;
 
 @Injectable()
 export class MatchService {
@@ -143,58 +150,122 @@ export class MatchService {
     side: Side,
     user: AuthUserView,
   ) {
-    const { category } = await this.requireCategory(tournamentId, categoryId);
-    const match = await this.requireOperableMatch(
+    return this.mutateLiveScore({
       tournamentId,
       categoryId,
       matchId,
-    );
-
-    if (match.status !== MatchStatus.live) {
-      throw new BadRequestException(
-        'Score points only allowed while Match is live (8B)',
-      );
-    }
-
-    await this.assertOperatorAuthorized(match.id, user);
-
-    let state = this.readScoreState(match.scoreRepresentation);
-    if (!state) {
-      const config = resolveScoringConfig(category.configuration);
-      state = createInitialState(config);
-    }
-
-    let next: ScoreState;
-    try {
-      next = applyPoint(state, side);
-    } catch (err) {
-      throw new BadRequestException(
-        err instanceof Error ? err.message : 'Unable to apply point',
-      );
-    }
-
-    const updated = await this.matches.updateScoreRepresentation({
-      matchId: match.id,
-      scoreRepresentation: next as unknown as Prisma.InputJsonValue,
-      updatedBy: user.id,
+      user,
+      action: 'point',
+      side,
+      mutate: (state) => applyPoint(state, side),
+      pushUndo: true,
     });
+  }
 
-    await this.events.publish({
-      name: MatchEvents.ScoreUpdated,
-      occurredAt: new Date().toISOString(),
-      payload: {
-        tournamentId,
-        categoryId,
-        matchId: match.id,
-        side,
-        phase: next.phase,
-        winnerSide: next.winnerSide,
-        setsWon: next.setsWon,
-        actorId: user.id,
+  async removeScorePoint(
+    tournamentId: string,
+    categoryId: string,
+    matchId: string,
+    side: Side,
+    user: AuthUserView,
+  ) {
+    return this.mutateLiveScore({
+      tournamentId,
+      categoryId,
+      matchId,
+      user,
+      action: 'point_remove',
+      side,
+      mutate: (state) => removePoint(state, side),
+      pushUndo: true,
+    });
+  }
+
+  async adjustScoreGame(
+    tournamentId: string,
+    categoryId: string,
+    matchId: string,
+    side: Side,
+    delta: 1 | -1,
+    user: AuthUserView,
+  ) {
+    return this.mutateLiveScore({
+      tournamentId,
+      categoryId,
+      matchId,
+      user,
+      action: 'game',
+      side,
+      delta,
+      mutate: (state) => adjustGame(state, side, delta),
+      pushUndo: true,
+    });
+  }
+
+  async adjustScoreSet(
+    tournamentId: string,
+    categoryId: string,
+    matchId: string,
+    side: Side,
+    delta: 1 | -1,
+    user: AuthUserView,
+  ) {
+    return this.mutateLiveScore({
+      tournamentId,
+      categoryId,
+      matchId,
+      user,
+      action: 'set',
+      side,
+      delta,
+      mutate: (state) => adjustSet(state, side, delta),
+      pushUndo: true,
+    });
+  }
+
+  async setScoreServer(
+    tournamentId: string,
+    categoryId: string,
+    matchId: string,
+    side: Side,
+    user: AuthUserView,
+  ) {
+    return this.mutateLiveScore({
+      tournamentId,
+      categoryId,
+      matchId,
+      user,
+      action: 'server',
+      side,
+      mutate: (state) => setServerSide(state, side),
+      pushUndo: true,
+    });
+  }
+
+  async undoScore(
+    tournamentId: string,
+    categoryId: string,
+    matchId: string,
+    user: AuthUserView,
+  ) {
+    return this.mutateLiveScore({
+      tournamentId,
+      categoryId,
+      matchId,
+      user,
+      action: 'undo',
+      mutate: (state) => {
+        const stack = state.undoStack ?? [];
+        if (stack.length === 0) {
+          throw new Error('Nothing to undo');
+        }
+        const previous = stack[stack.length - 1];
+        const restored = stripUndoStack(previous);
+        restored.undoStack = stack.slice(0, -1);
+        return restored;
       },
+      pushUndo: false,
     });
-
-    return updated;
   }
 
   async finish(
@@ -301,6 +372,86 @@ export class MatchService {
         // Standing (group) / Playoff (knockout) consume this; MatchService does not write those domains.
       }),
     });
+  }
+
+  private async mutateLiveScore(params: {
+    tournamentId: string;
+    categoryId: string;
+    matchId: string;
+    user: AuthUserView;
+    action: string;
+    side?: Side;
+    delta?: 1 | -1;
+    mutate: (state: ScoreState) => ScoreState;
+    pushUndo: boolean;
+  }) {
+    const { category } = await this.requireCategory(
+      params.tournamentId,
+      params.categoryId,
+    );
+    const match = await this.requireOperableMatch(
+      params.tournamentId,
+      params.categoryId,
+      params.matchId,
+    );
+
+    if (match.status !== MatchStatus.live) {
+      throw new BadRequestException(
+        'Score changes only allowed while Match is live (8B)',
+      );
+    }
+
+    await this.assertOperatorAuthorized(match.id, params.user);
+
+    let state = this.readScoreState(match.scoreRepresentation);
+    if (!state) {
+      const config = resolveScoringConfig(category.configuration);
+      state = createInitialState(config);
+    }
+
+    let next: ScoreState;
+    try {
+      if (params.pushUndo) {
+        const snapshot = stripUndoStack(state);
+        const stack = [...(state.undoStack ?? []), snapshot].slice(
+          -MAX_UNDO_STACK,
+        );
+        next = params.mutate(state);
+        next.undoStack = stack;
+      } else {
+        next = params.mutate(state);
+      }
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Unable to update score',
+      );
+    }
+
+    const updated = await this.matches.updateScoreRepresentation({
+      matchId: match.id,
+      scoreRepresentation: next as unknown as Prisma.InputJsonValue,
+      updatedBy: params.user.id,
+    });
+
+    await this.events.publish({
+      name: MatchEvents.ScoreUpdated,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        tournamentId: params.tournamentId,
+        categoryId: params.categoryId,
+        matchId: match.id,
+        action: params.action,
+        side: params.side ?? null,
+        delta: params.delta ?? null,
+        phase: next.phase,
+        winnerSide: next.winnerSide,
+        setsWon: next.setsWon,
+        serverSide: next.serverSide,
+        actorId: params.user.id,
+      },
+    });
+
+    return updated;
   }
 
   private readScoreState(value: unknown): ScoreState | null {

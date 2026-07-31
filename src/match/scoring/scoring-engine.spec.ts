@@ -4,10 +4,14 @@
  */
 import assert from 'node:assert/strict';
 import {
+  adjustGame,
+  adjustSet,
   applyPoint,
   createInitialState,
   getMatchResult,
   isMatchComplete,
+  removePoint,
+  setServerSide,
 } from './scoring-engine';
 import { resolveScoringConfig } from './scoring.config';
 import { getScoringTemplate } from './scoring.templates';
@@ -197,6 +201,46 @@ function winGames(state: ScoreState, side: Side, count: number): ScoreState {
     [6, 0],
   ]);
   assert.throws(() => getMatchResult(createInitialState(cfg('one_set_6_gp_tb5'))));
+}
+
+// --- removePoint corrects mis-tap ---
+{
+  let s = createInitialState(cfg('one_set_4_gp_tb3'));
+  s = applyPoint(s, 'A');
+  s = applyPoint(s, 'A');
+  s = removePoint(s, 'A');
+  assert.equal(s.sets[0].game?.pointsA, 1);
+  assert.throws(() => removePoint(s, 'B'));
+}
+
+// --- adjustGame ± and server rotation ---
+{
+  let s = createInitialState(cfg('one_set_4_gp_tb3'));
+  assert.equal(s.serverSide, 'A');
+  s = adjustGame(s, 'A', 1);
+  assert.equal(s.sets[0].gamesA, 1);
+  assert.equal(s.serverSide, 'B');
+  s = adjustGame(s, 'A', -1);
+  assert.equal(s.sets[0].gamesA, 0);
+}
+
+// --- adjustSet ± ---
+{
+  let s = createInitialState(cfg('best_of_3_gp_full'));
+  s = adjustSet(s, 'A', 1);
+  assert.equal(s.setsWon.A, 1);
+  assert.equal(s.sets.length, 2);
+  s = adjustSet(s, 'A', -1);
+  assert.equal(s.setsWon.A, 0);
+  assert.equal(s.sets.length, 1);
+  assert.equal(s.phase, 'in_progress');
+}
+
+// --- setServerSide ---
+{
+  let s = createInitialState(cfg('one_set_4_gp_tb3'));
+  s = setServerSide(s, 'B');
+  assert.equal(s.serverSide, 'B');
 }
 
 console.log('scoring-engine.spec: all assertions passed');

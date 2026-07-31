@@ -163,6 +163,10 @@ function applyGamePoint(
   return { game: next, gameWonBy: null };
 }
 
+function rotateServer(state: ScoreState): void {
+  state.serverSide = state.serverSide ? opposite(state.serverSide) : 'A';
+}
+
 function completeSet(state: ScoreState, set: SetState, winner: Side): void {
   set.winnerSide = winner;
   set.game = null;
@@ -189,6 +193,40 @@ function completeSet(state: ScoreState, set: SetState, winner: Side): void {
   } else {
     state.sets.push(emptySet(false));
   }
+}
+
+function isSetScoreEmpty(set: SetState): boolean {
+  const gameEmpty =
+    !set.game ||
+    (set.game.pointsA === 0 &&
+      set.game.pointsB === 0 &&
+      set.game.advantageSide === null);
+  const tbEmpty =
+    !set.tieBreak ||
+    (set.tieBreak.pointsA === 0 && set.tieBreak.pointsB === 0);
+  return (
+    set.winnerSide === null &&
+    set.gamesA === 0 &&
+    set.gamesB === 0 &&
+    gameEmpty &&
+    tbEmpty
+  );
+}
+
+function recomputeAdvantage(game: GameState, deuceMode: ScoringConfig['deuceMode']) {
+  if (deuceMode === 'advantage' && game.pointsA >= 3 && game.pointsB >= 3) {
+    if (game.pointsA === game.pointsB) game.advantageSide = null;
+    else game.advantageSide = game.pointsA > game.pointsB ? 'A' : 'B';
+    return;
+  }
+  game.advantageSide = null;
+}
+
+/** Snapshot without nested undo history (for undoStack entries). */
+export function stripUndoStack(state: ScoreState): ScoreState {
+  const cloned = cloneState(state);
+  delete cloned.undoStack;
+  return cloned;
 }
 
 /**
@@ -243,6 +281,7 @@ export function applyPoint(state: ScoreState, side: Side): ScoreState {
       // Represent match TB as games 1-0 for display consistency
       if (winner === 'A') set.gamesA = 1;
       else set.gamesB = 1;
+      rotateServer(next);
       completeSet(next, set, winner);
     }
     return next;
@@ -262,6 +301,7 @@ export function applyPoint(state: ScoreState, side: Side): ScoreState {
     if (winner) {
       if (winner === 'A') set.gamesA += 1;
       else set.gamesB += 1;
+      rotateServer(next);
       completeSet(next, set, winner);
     }
     return next;
@@ -282,6 +322,7 @@ export function applyPoint(state: ScoreState, side: Side): ScoreState {
   if (gameWonBy === 'A') set.gamesA += 1;
   else set.gamesB += 1;
   set.game = emptyGame();
+  rotateServer(next);
 
   // Check if set won by games
   const setWinner = setWonBySide(set.gamesA, set.gamesB, config);
@@ -296,6 +337,191 @@ export function applyPoint(state: ScoreState, side: Side): ScoreState {
     set.tieBreak = { pointsA: 0, pointsB: 0 };
   }
 
+  return next;
+}
+
+/**
+ * Remove one point from the given side in the current game / tie-break.
+ * Does not reopen completed games or sets — use undo or adjustGame for that.
+ */
+export function removePoint(state: ScoreState, side: Side): ScoreState {
+  if (side !== 'A' && side !== 'B') {
+    throw new Error('side must be A or B');
+  }
+  if (state.phase === 'completed') {
+    throw new Error('Match already completed');
+  }
+
+  const next = cloneState(state);
+  const set = currentSet(next);
+
+  if (set.tieBreak) {
+    const points = side === 'A' ? set.tieBreak.pointsA : set.tieBreak.pointsB;
+    if (points <= 0) {
+      throw new Error('No point to remove for this side');
+    }
+    if (side === 'A') set.tieBreak.pointsA -= 1;
+    else set.tieBreak.pointsB -= 1;
+    return next;
+  }
+
+  if (!set.game) {
+    throw new Error('No active game');
+  }
+
+  const points = side === 'A' ? set.game.pointsA : set.game.pointsB;
+  if (points <= 0) {
+    throw new Error('No point to remove for this side');
+  }
+
+  if (side === 'A') set.game.pointsA -= 1;
+  else set.game.pointsB -= 1;
+  recomputeAdvantage(set.game, next.configSnapshot.deuceMode);
+  return next;
+}
+
+/**
+ * Manually award or remove one game on the current set for a side.
+ */
+export function adjustGame(
+  state: ScoreState,
+  side: Side,
+  delta: 1 | -1,
+): ScoreState {
+  if (side !== 'A' && side !== 'B') {
+    throw new Error('side must be A or B');
+  }
+  if (delta !== 1 && delta !== -1) {
+    throw new Error('delta must be 1 or -1');
+  }
+
+  const next = cloneState(state);
+
+  if (delta === 1) {
+    if (next.phase === 'completed') {
+      throw new Error('Match already completed');
+    }
+    const set = currentSet(next);
+    if (set.isMatchTieBreak) {
+      throw new Error('Cannot adjust games during match tie-break');
+    }
+
+    if (side === 'A') set.gamesA += 1;
+    else set.gamesB += 1;
+    set.game = emptyGame();
+    set.tieBreak = null;
+    rotateServer(next);
+
+    const setWinner = setWonBySide(set.gamesA, set.gamesB, next.configSnapshot);
+    if (setWinner) {
+      completeSet(next, set, setWinner);
+      return next;
+    }
+
+    if (isSetTieBreakTrigger(set.gamesA, set.gamesB, next.configSnapshot)) {
+      set.game = null;
+      set.tieBreak = { pointsA: 0, pointsB: 0 };
+    }
+    return next;
+  }
+
+  // delta === -1
+  if (next.phase === 'completed') {
+    next.phase = 'in_progress';
+    next.winnerSide = null;
+  }
+
+  let set = currentSet(next);
+  if (set.winnerSide === null && isSetScoreEmpty(set) && next.sets.length > 1) {
+    next.sets.pop();
+    set = currentSet(next);
+    if (set.winnerSide) {
+      const winner = set.winnerSide;
+      next.setsWon[winner] = Math.max(0, next.setsWon[winner] - 1);
+      set.winnerSide = null;
+    }
+  }
+
+  const games = side === 'A' ? set.gamesA : set.gamesB;
+  if (games <= 0) {
+    throw new Error('No game to remove for this side');
+  }
+
+  if (side === 'A') set.gamesA -= 1;
+  else set.gamesB -= 1;
+  set.winnerSide = null;
+  set.game = set.isMatchTieBreak ? null : emptyGame();
+  if (
+    isSetTieBreakTrigger(set.gamesA, set.gamesB, next.configSnapshot) &&
+    !set.isMatchTieBreak
+  ) {
+    set.game = null;
+    set.tieBreak = { pointsA: 0, pointsB: 0 };
+  } else if (!set.isMatchTieBreak) {
+    set.tieBreak = null;
+    set.game = emptyGame();
+  }
+  return next;
+}
+
+/**
+ * Manually award or remove one set for a side.
+ */
+export function adjustSet(
+  state: ScoreState,
+  side: Side,
+  delta: 1 | -1,
+): ScoreState {
+  if (side !== 'A' && side !== 'B') {
+    throw new Error('side must be A or B');
+  }
+  if (delta !== 1 && delta !== -1) {
+    throw new Error('delta must be 1 or -1');
+  }
+
+  const next = cloneState(state);
+
+  if (delta === 1) {
+    if (next.phase === 'completed') {
+      throw new Error('Match already completed');
+    }
+    const set = currentSet(next);
+    completeSet(next, set, side);
+    return next;
+  }
+
+  if (next.setsWon[side] < 1) {
+    throw new Error('No set to remove for this side');
+  }
+
+  next.phase = 'in_progress';
+  next.winnerSide = null;
+
+  let set = currentSet(next);
+  if (set.winnerSide === null && isSetScoreEmpty(set) && next.sets.length > 1) {
+    next.sets.pop();
+    set = currentSet(next);
+  }
+
+  if (set.winnerSide !== side) {
+    throw new Error('Last completed set was not won by this side');
+  }
+
+  next.setsWon[side] -= 1;
+  set.winnerSide = null;
+  set.gamesA = 0;
+  set.gamesB = 0;
+  set.game = set.isMatchTieBreak ? null : emptyGame();
+  set.tieBreak = set.isMatchTieBreak ? { pointsA: 0, pointsB: 0 } : null;
+  return next;
+}
+
+export function setServerSide(state: ScoreState, side: Side): ScoreState {
+  if (side !== 'A' && side !== 'B') {
+    throw new Error('side must be A or B');
+  }
+  const next = cloneState(state);
+  next.serverSide = side;
   return next;
 }
 

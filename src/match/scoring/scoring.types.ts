@@ -46,6 +46,11 @@ export type ScoreState = {
   phase: 'in_progress' | 'completed';
   winnerSide: Side | null;
   serverSide: Side | null;
+  /**
+   * Prior score snapshots for referee undo (stripped of nested undoStack).
+   * Managed by MatchService; engine helpers ignore this field.
+   */
+  undoStack?: ScoreState[];
 };
 
 /**
