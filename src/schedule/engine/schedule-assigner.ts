@@ -90,16 +90,27 @@ export function assignCourtsAndTimes(
   return assigned;
 }
 
+export type ScheduleConflictSlot = {
+  courtId: string | null;
+  teamAId: string;
+  teamBId: string;
+  scheduledStartAt: Date;
+  scheduledEndAt: Date;
+};
+
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
   return aStart < bEnd && bStart < aEnd;
 }
 
-function assertNoCourtConflicts(assigned: AssignedMatch[]): void {
+export function assertNoCourtConflicts(
+  assigned: Array<Pick<ScheduleConflictSlot, 'courtId' | 'scheduledStartAt' | 'scheduledEndAt'>>,
+): void {
   for (let i = 0; i < assigned.length; i += 1) {
     for (let j = i + 1; j < assigned.length; j += 1) {
       const a = assigned[i]!;
       const b = assigned[j]!;
       if (
+        a.courtId &&
         a.courtId === b.courtId &&
         overlaps(
           a.scheduledStartAt,
@@ -114,7 +125,7 @@ function assertNoCourtConflicts(assigned: AssignedMatch[]): void {
   }
 }
 
-function assertNoTeamConflicts(assigned: AssignedMatch[]): void {
+export function assertNoTeamConflicts(assigned: ScheduleConflictSlot[]): void {
   for (let i = 0; i < assigned.length; i += 1) {
     for (let j = i + 1; j < assigned.length; j += 1) {
       const a = assigned[i]!;
@@ -137,4 +148,10 @@ function assertNoTeamConflicts(assigned: AssignedMatch[]): void {
       }
     }
   }
+}
+
+/** Re-validate court/team overlaps after a manual reschedule (SCH-05 / SCH-06). */
+export function assertNoScheduleConflicts(slots: ScheduleConflictSlot[]): void {
+  assertNoCourtConflicts(slots);
+  assertNoTeamConflicts(slots);
 }

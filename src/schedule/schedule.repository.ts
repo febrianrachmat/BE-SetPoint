@@ -387,4 +387,101 @@ export class ScheduleRepository {
   isLocked(lockState: LockState) {
     return lockState === LockState.locked;
   }
+
+  findEntryInVersion(scheduleVersionId: string, entryId: string) {
+    return this.prisma.scheduleEntry.findFirst({
+      where: { id: entryId, scheduleVersionId },
+      include: {
+        match: {
+          include: {
+            participations: {
+              orderBy: { sideLabel: 'asc' },
+              select: { sideLabel: true, teamId: true },
+            },
+          },
+        },
+        scheduleVersion: {
+          select: {
+            id: true,
+            versionNumber: true,
+            versionStatus: true,
+            officialFlag: true,
+            scheduleId: true,
+          },
+        },
+      },
+    });
+  }
+
+  listEntriesForConflictCheck(scheduleVersionId: string) {
+    return this.prisma.scheduleEntry.findMany({
+      where: { scheduleVersionId },
+      select: {
+        id: true,
+        courtId: true,
+        scheduledStartAt: true,
+        scheduledEndAt: true,
+        match: {
+          select: {
+            participations: {
+              orderBy: { sideLabel: 'asc' },
+              select: { sideLabel: true, teamId: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  updateEntrySchedule(params: {
+    entryId: string;
+    matchId: string;
+    scheduledStartAt: Date;
+    scheduledEndAt: Date;
+    updatedBy?: string;
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.scheduleEntry.update({
+        where: { id: params.entryId },
+        data: {
+          scheduledStartAt: params.scheduledStartAt,
+          scheduledEndAt: params.scheduledEndAt,
+          rescheduleFlag: true,
+        },
+      });
+
+      await tx.match.update({
+        where: { id: params.matchId },
+        data: {
+          scheduledStartAt: params.scheduledStartAt,
+          updatedBy: params.updatedBy,
+          rowVersion: { increment: 1 },
+        },
+      });
+
+      return tx.scheduleEntry.findUnique({
+        where: { id: params.entryId },
+        include: {
+          court: {
+            select: { id: true, name: true, label: true },
+          },
+          match: {
+            include: {
+              group: {
+                select: { id: true, name: true, label: true },
+              },
+              participations: {
+                orderBy: { sideLabel: 'asc' },
+                include: {
+                  team: {
+                    select: { id: true, name: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+    });
+  }
 }

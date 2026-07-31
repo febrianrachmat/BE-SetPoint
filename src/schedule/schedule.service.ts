@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   ConflictStatus,
+  MatchStatus,
   TeamStatus,
   VersionStatus,
 } from '@prisma/client';
@@ -18,6 +19,8 @@ import { resolveCompetitionMode } from '../category/competition-mode';
 import { DrawingService } from '../drawing/drawing.service';
 import { GenerateScheduleDto } from './dto/generate-schedule.dto';
 import { ReviewScheduleVersionDto } from './dto/review-schedule-version.dto';
+import { UpdateScheduleEntryDto } from './dto/update-schedule-entry.dto';
+import { assertNoScheduleConflicts } from './engine/schedule-assigner';
 import { generateSchedulePlan } from './engine/schedule-generator';
 import { ScheduleEvents } from './schedule.events';
 import {
@@ -25,6 +28,8 @@ import {
   SCHEDULE_PUBLISH_TOURNAMENT_STATUSES,
 } from './schedule.lifecycle';
 import { ScheduleRepository } from './schedule.repository';
+
+const DEFAULT_SLOT_MINUTES = 90;
 
 @Injectable()
 export class ScheduleService {
@@ -439,6 +444,138 @@ export class ScheduleService {
     });
 
     return unlocked;
+  }
+
+  /**
+   * Manual reschedule of one entry while Schedule is unlocked (SCH-08).
+   * Updates ScheduleEntry + Match.scheduledStartAt and re-checks SCH-05/06.
+   */
+  async updateEntry(
+    tournamentId: string,
+    categoryId: string,
+    versionId: string,
+    entryId: string,
+    dto: UpdateScheduleEntryDto,
+    user: AuthUserView,
+  ) {
+    await this.requireCategoryContext(tournamentId, categoryId);
+    const schedule = await this.requireSchedule(categoryId);
+
+    if (this.schedules.isLocked(schedule.lockState)) {
+      throw new BadRequestException(
+        'Schedule is locked; unlock before rescheduling entries (SCH-08 / SCH-11)',
+      );
+    }
+
+    const version = await this.schedules.findVersionForSchedule(
+      schedule.id,
+      versionId,
+    );
+    if (!version) {
+      throw new NotFoundException('Schedule version not found');
+    }
+
+    if (version.versionStatus === VersionStatus.historical) {
+      throw new BadRequestException(
+        'Historical Schedule versions cannot be edited',
+      );
+    }
+
+    const entry = await this.schedules.findEntryInVersion(versionId, entryId);
+    if (!entry) {
+      throw new NotFoundException('Schedule entry not found');
+    }
+
+    if (
+      entry.match.status !== MatchStatus.waiting &&
+      entry.match.status !== MatchStatus.warm_up
+    ) {
+      throw new BadRequestException(
+        `Cannot reschedule match in status '${entry.match.status}'`,
+      );
+    }
+
+    const startAt = dto.scheduledStartAt;
+    let endAt = dto.scheduledEndAt;
+    if (!endAt) {
+      const previousDurationMs =
+        entry.scheduledEndAt != null
+          ? entry.scheduledEndAt.getTime() - entry.scheduledStartAt.getTime()
+          : DEFAULT_SLOT_MINUTES * 60_000;
+      const durationMs =
+        previousDurationMs > 0
+          ? previousDurationMs
+          : DEFAULT_SLOT_MINUTES * 60_000;
+      endAt = new Date(startAt.getTime() + durationMs);
+    }
+
+    if (!(endAt > startAt)) {
+      throw new BadRequestException(
+        'scheduledEndAt must be after scheduledStartAt',
+      );
+    }
+
+    const siblings = await this.schedules.listEntriesForConflictCheck(versionId);
+    const slots = siblings.map((row) => {
+      const isTarget = row.id === entryId;
+      const teamA =
+        row.match.participations.find((p) => p.sideLabel === 'A')?.teamId ??
+        row.match.participations[0]?.teamId;
+      const teamB =
+        row.match.participations.find((p) => p.sideLabel === 'B')?.teamId ??
+        row.match.participations[1]?.teamId;
+      if (!teamA || !teamB) {
+        throw new BadRequestException(
+          'Schedule entry is missing team participations',
+        );
+      }
+      return {
+        courtId: row.courtId,
+        teamAId: teamA,
+        teamBId: teamB,
+        scheduledStartAt: isTarget ? startAt : row.scheduledStartAt,
+        scheduledEndAt: isTarget
+          ? endAt
+          : (row.scheduledEndAt ??
+            new Date(
+              row.scheduledStartAt.getTime() + DEFAULT_SLOT_MINUTES * 60_000,
+            )),
+      };
+    });
+
+    try {
+      assertNoScheduleConflicts(slots);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Schedule conflict detected',
+      );
+    }
+
+    const updated = await this.schedules.updateEntrySchedule({
+      entryId,
+      matchId: entry.matchId,
+      scheduledStartAt: startAt,
+      scheduledEndAt: endAt,
+      updatedBy: user.id,
+    });
+
+    await this.events.publish({
+      name: ScheduleEvents.EntryRescheduled,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        tournamentId,
+        categoryId,
+        scheduleId: schedule.id,
+        scheduleVersionId: versionId,
+        entryId,
+        matchId: entry.matchId,
+        scheduledStartAt: startAt.toISOString(),
+        scheduledEndAt: endAt.toISOString(),
+        actorId: user.id,
+      },
+    });
+
+    return updated;
   }
 
   /**

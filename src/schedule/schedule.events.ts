@@ -5,6 +5,7 @@ export const ScheduleEvents = {
   Published: 'schedule.published',
   Locked: 'schedule.locked',
   Unlocked: 'schedule.unlocked',
+  EntryRescheduled: 'schedule.entry_rescheduled',
 } as const;
 
 export type ScheduleEventName =

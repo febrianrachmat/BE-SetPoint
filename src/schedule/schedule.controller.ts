@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import { AuthUserView } from '../auth/types/auth-user.type';
 import { GenerateScheduleDto } from './dto/generate-schedule.dto';
 import { ReviewScheduleVersionDto } from './dto/review-schedule-version.dto';
 import { UnlockScheduleDto } from './dto/unlock-schedule.dto';
+import { UpdateScheduleEntryDto } from './dto/update-schedule-entry.dto';
 import { ScheduleService } from './schedule.service';
 
 @ApiTags('schedule')
@@ -85,6 +87,29 @@ export class ScheduleController {
       tournamentId,
       categoryId,
       versionId,
+    );
+  }
+
+  @Patch('versions/:versionId/entries/:entryId')
+  @ApiOperation({
+    summary:
+      'Reschedule one entry (start/end) while Schedule is unlocked — SCH-08',
+  })
+  updateEntry(
+    @Param('tournamentId', ParseUUIDPipe) tournamentId: string,
+    @Param('categoryId', ParseUUIDPipe) categoryId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: UpdateScheduleEntryDto,
+    @CurrentUser() user: AuthUserView,
+  ) {
+    return this.scheduleService.updateEntry(
+      tournamentId,
+      categoryId,
+      versionId,
+      entryId,
+      dto,
+      user,
     );
   }
 
