@@ -13,6 +13,7 @@ import { PlayoffModule } from './playoff/playoff.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { StandingModule } from './standing/standing.module';
 import { TournamentModule } from './tournament/tournament.module';
+import { PublicHubModule } from './public-hub/public-hub.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { TournamentModule } from './tournament/tournament.module';
     StandingModule,
     PlayoffModule,
     MatchModule,
+    PublicHubModule,
   ],
   controllers: [AppController],
   providers: [AppService],
