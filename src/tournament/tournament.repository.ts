@@ -42,10 +42,15 @@ export class TournamentRepository {
     take: number;
     search?: string;
     status?: TournamentStatus;
+    statuses?: TournamentStatus[];
   }) {
     const where: Prisma.TournamentWhereInput = {
       deletedAt: null,
-      ...(params.status ? { status: params.status } : {}),
+      ...(params.status
+        ? { status: params.status }
+        : params.statuses && params.statuses.length > 0
+          ? { status: { in: params.statuses } }
+          : {}),
       ...(params.search
         ? {
             name: {
@@ -61,7 +66,7 @@ export class TournamentRepository {
         where,
         skip: params.skip,
         take: params.take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ status: 'asc' }, { startAt: 'asc' }, { createdAt: 'desc' }],
       }),
       this.prisma.tournament.count({ where }),
     ]);

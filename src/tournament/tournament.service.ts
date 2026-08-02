@@ -49,6 +49,56 @@ export class TournamentService {
     };
   }
 
+  /**
+   * Guest-facing list: Published + Live only (optional single-status filter within that set).
+   */
+  async listPublic(query: ListTournamentsQueryDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
+    const allowed: TournamentStatus[] = [
+      TournamentStatus.published,
+      TournamentStatus.live,
+    ];
+
+    if (query.status && !allowed.includes(query.status)) {
+      throw new BadRequestException(
+        'Public tournament list only supports status published or live',
+      );
+    }
+
+    const [items, total] = await this.tournaments.findManyActive({
+      skip,
+      take: pageSize,
+      search: query.search,
+      status: query.status,
+      statuses: query.status ? undefined : allowed,
+    });
+
+    return {
+      items,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize) || 1,
+      },
+    };
+  }
+
+  async getPublicById(id: string) {
+    const tournament = await this.requireActiveTournament(id);
+    const visible: TournamentStatus[] = [
+      TournamentStatus.published,
+      TournamentStatus.live,
+      TournamentStatus.finished,
+    ];
+    if (!visible.includes(tournament.status)) {
+      throw new NotFoundException('Tournament not found');
+    }
+    return tournament;
+  }
+
   async getById(id: string) {
     return this.requireActiveTournament(id);
   }
