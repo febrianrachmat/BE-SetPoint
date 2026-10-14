@@ -384,3 +384,5 @@ Role assignments support optional `tournamentId` for future per-tournament roles
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+Preview check: this pull request verifies UAT preview environments for be-setpoint.
